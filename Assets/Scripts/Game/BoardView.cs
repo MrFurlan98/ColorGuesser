@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using HuesNCues.Core;
 using TMPro;
 using UnityEngine;
@@ -7,21 +9,21 @@ using UnityEngine.UI;
 namespace HuesNCues.Game
 {
     /// <summary>
-    /// Renders the 480-cell color board on a uGUI Canvas and reports the cell you
-    /// click. It only READS from the Core assembly (ColorBoard / GridCoordinate) -
-    /// it holds no game rules itself. That keeps the "view" and the "brain" separate,
-    /// exactly as the architecture in the proposal describes.
+    /// Renders the 480-cell color board on a uGUI Canvas and reports clicks. It only
+    /// READS from the Core assembly (ColorBoard / GridCoordinate) and holds no game
+    /// rules - keeping the "view" separate from the "brain", as the architecture says.
     ///
-    /// Setup: create an empty GameObject in a scene, add this component, press Play.
-    /// It builds (or finds) a Canvas and an EventSystem for you.
+    /// Runs before MatchView (execution order) so its Canvas and board exist when the
+    /// match wires itself up.
     ///
-    /// Performance choices (why this stays cheap even with 480 cells):
-    ///   - Cells have raycastTarget = false. A single invisible panel behind them
-    ///     catches clicks, so every click tests 1 raycast target instead of 480.
-    ///   - Cells are positioned manually once, so there is no layout group re-running
-    ///     a layout pass every time something changes.
+    /// Performance choices (why this stays cheap with 480 cells):
+    ///   - Cells have raycastTarget = false; one invisible panel behind them catches
+    ///     clicks, so a click tests 1 raycast target instead of 480.
+    ///   - Cells are positioned manually once (no layout group re-running layout).
     ///   - All cells share the default UI material, so uGUI batches them together.
+    ///   - Window resizing only changes one localScale (see FitBoard).
     /// </summary>
+    [DefaultExecutionOrder(-100)]
     public class BoardView : MonoBehaviour
     {
         [Header("Cell layout (tweak to restyle the board)")]
@@ -30,6 +32,9 @@ namespace HuesNCues.Game
 
         [Tooltip("Gap between cells in UI pixels.")]
         [SerializeField] private float spacing = 2f;
+
+        [Tooltip("Optional sprite used for every cell (e.g. rounded/bordered). Empty = solid square.")]
+        [SerializeField] private Sprite cellSprite;
 
         [Tooltip("Optional. Board is drawn under this Canvas; if left empty, one is created.")]
         [SerializeField] private Canvas canvas;
@@ -41,25 +46,85 @@ namespace HuesNCues.Game
         private Image[] _cells;                 // indexed by row * Columns + col
         private RectTransform _boardArea;       // fills the canvas; the board is fitted inside it
         private RectTransform _boardPanel;      // fixed design-size grid, scaled to fit _boardArea
-        private TextMeshProUGUI _readout;
-
-        private GridCoordinate? _selected;      // null until the first click
+        private readonly List<GameObject> _markers = new List<GameObject>();
+        private GridCoordinate? _highlighted;   // cell popped during the reveal
 
         private float Step => cellSize + spacing;
 
-        private void Start()
+        /// <summary>Raised when a valid board cell is clicked.</summary>
+        public event Action<GridCoordinate> CellClicked;
+
+        // Read access for other view/logic code.
+        public ColorBoard Board => _board;
+        public Canvas Canvas => canvas;
+        public Color ColorOf(GridCoordinate c) => _board.GetColor(c);
+        public string NameOf(GridCoordinate c) => _board.GetName(c);
+
+        private void Awake()
         {
             _board = LoadBoard();
-            var canvas = EnsureCanvasAndEventSystem();
-            BuildBoard(canvas.transform);
-            BuildReadout(canvas.transform);
+            var cv = EnsureCanvasAndEventSystem();
+            BuildBoard(cv.transform);
         }
 
-        /// <summary>
-        /// Loads the authored board from Assets/Resources/BoardData.csv. If the file
-        /// is missing or malformed we fall back to the procedural board so the game
-        /// still runs (and we log why).
-        /// </summary>
+        // ----- Markers & highlight (used during a match) ----------------------------
+
+        /// <summary>Spawns a marker prefab centered on a cell, tinted and labelled.</summary>
+        public GameObject PlaceMarker(GameObject prefab, GridCoordinate coord, Color color, string label)
+        {
+            if (prefab == null || _boardPanel == null) return null;
+
+            var go = Instantiate(prefab);
+            var rt = (RectTransform)go.transform;
+            rt.SetParent(_boardPanel, false);
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(cellSize * 0.8f, cellSize * 0.8f);
+            rt.anchoredPosition = CellCenter(coord);
+            rt.SetAsLastSibling(); // draw above the cells
+
+            var img = go.GetComponent<Image>();
+            if (img != null) img.color = color;
+            var tmp = go.GetComponentInChildren<TextMeshProUGUI>();
+            if (tmp != null) tmp.text = label;
+
+            _markers.Add(go);
+            return go;
+        }
+
+        /// <summary>Removes every marker (called when a new round starts).</summary>
+        public void ClearMarkers()
+        {
+            foreach (var m in _markers)
+                if (m != null) Destroy(m);
+            _markers.Clear();
+        }
+
+        /// <summary>Pops the target cell so it stands out at the reveal.</summary>
+        public void ShowTarget(GridCoordinate coord)
+        {
+            ClearTargetHighlight();
+            if (_cells == null || !_board.Contains(coord)) return;
+
+            var rt = _cells[Index(coord)].rectTransform;
+            rt.localScale = Vector3.one * 1.4f;
+            rt.SetAsLastSibling();
+            // Keep the markers on top of the enlarged target.
+            foreach (var m in _markers)
+                if (m != null) ((RectTransform)m.transform).SetAsLastSibling();
+
+            _highlighted = coord;
+        }
+
+        public void ClearTargetHighlight()
+        {
+            if (_highlighted.HasValue && _cells != null)
+                _cells[Index(_highlighted.Value)].rectTransform.localScale = Vector3.one;
+            _highlighted = null;
+        }
+
+        // ----- Loading & construction -----------------------------------------------
+
         private ColorBoard LoadBoard()
         {
             var asset = Resources.Load<TextAsset>("BoardData");
@@ -73,18 +138,15 @@ namespace HuesNCues.Game
             {
                 return BoardCsvParser.Parse(asset.text);
             }
-            catch (System.Exception e)
+            catch (Exception e)
             {
                 Debug.LogError($"Failed to parse BoardData.csv ({e.Message}); using the procedural board.");
                 return ColorBoard.CreateProcedural();
             }
         }
 
-        // ----- One-time construction ------------------------------------------------
-
         private Canvas EnsureCanvasAndEventSystem()
         {
-            // Use the Canvas assigned in the inspector; if none was set, create one.
             if (canvas == null)
             {
                 var go = new GameObject("Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
@@ -96,7 +158,6 @@ namespace HuesNCues.Game
                 scaler.matchWidthOrHeight = 0.5f; // balance width/height at extreme aspect ratios
             }
 
-            // Clicks need an active EventSystem. EventSystem.current avoids a scene search.
             if (EventSystem.current == null)
                 new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
 
@@ -117,11 +178,9 @@ namespace HuesNCues.Game
             _boardArea.anchorMax = Vector2.one;
             _boardArea.offsetMin = new Vector2(screenPadding, screenPadding);
             _boardArea.offsetMax = new Vector2(-screenPadding, -screenPadding);
-            // Re-fit the board whenever this area's size changes (i.e. the window resizes).
             areaGO.AddComponent<RectResizeReceiver>().Init(FitBoard);
 
-            // The panel: fixed design size, centered in the area, and the single click
-            // catcher for the whole grid.
+            // The panel: fixed design size, centered, and the single click catcher.
             var panelGO = new GameObject("BoardPanel", typeof(RectTransform), typeof(Image), typeof(BoardClickReceiver));
             _boardPanel = panelGO.GetComponent<RectTransform>();
             _boardPanel.SetParent(_boardArea, false);
@@ -132,7 +191,6 @@ namespace HuesNCues.Game
             var panelImage = panelGO.GetComponent<Image>();
             panelImage.color = new Color(0f, 0f, 0f, 0f); // invisible, but still catches raycasts
             panelImage.raycastTarget = true;
-
             panelGO.GetComponent<BoardClickReceiver>().Init(this);
 
             // The 480 cells.
@@ -142,28 +200,23 @@ namespace HuesNCues.Game
                 var cellGO = new GameObject($"Cell_{coord.Label}", typeof(RectTransform), typeof(Image));
                 var rt = cellGO.GetComponent<RectTransform>();
                 rt.SetParent(_boardPanel, false);
-
-                // Anchor every cell to the panel's TOP-LEFT corner and offset from there.
                 rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
                 rt.pivot = new Vector2(0f, 1f);
                 rt.sizeDelta = new Vector2(cellSize, cellSize);
                 rt.anchoredPosition = new Vector2(coord.Column * Step, -coord.Row * Step);
 
                 var img = cellGO.GetComponent<Image>();
+                img.sprite = cellSprite;         // null = solid square; assign one to restyle all cells
+                img.type = Image.Type.Sliced;
                 img.color = _board.GetColor(coord);
-                img.raycastTarget = false; // <-- the key optimization
+                img.raycastTarget = false; // the key optimization
 
                 _cells[Index(coord)] = img;
             }
 
-            FitBoard(); // size the board to the current window
+            FitBoard();
         }
 
-        /// <summary>
-        /// Scales the whole board (one transform) so the fixed-size grid fits inside
-        /// the available area, keeping its aspect ratio and staying centered. Called
-        /// once after building and again on every window resize.
-        /// </summary>
         private void FitBoard()
         {
             if (_boardArea == null || _boardPanel == null) return;
@@ -178,67 +231,38 @@ namespace HuesNCues.Game
             _boardPanel.localScale = new Vector3(scale, scale, 1f);
         }
 
-        private void BuildReadout(Transform canvasTransform)
-        {
-            var go = new GameObject("Readout", typeof(RectTransform));
-            var rt = go.GetComponent<RectTransform>();
-            rt.SetParent(canvasTransform, false);
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 1f);
-            rt.anchoredPosition = new Vector2(0f, -40f);
-            rt.sizeDelta = new Vector2(600f, 50f);
-
-            // TextMeshPro uses its default font asset (imported via TMP Essentials).
-            _readout = go.AddComponent<TextMeshProUGUI>();
-            _readout.fontSize = 28;
-            _readout.alignment = TextAlignmentOptions.Center;
-            _readout.color = Color.white;
-            _readout.text = "Click a cell";
-        }
-
         // ----- Click handling -------------------------------------------------------
 
         /// <summary>Called by BoardClickReceiver when the panel is clicked.</summary>
         internal void OnBoardClicked(PointerEventData eventData)
         {
-            // Convert the screen click into a local point inside the panel rect.
             RectTransformUtility.ScreenPointToLocalPointInRectangle(
                 _boardPanel, eventData.position, eventData.pressEventCamera, out Vector2 local);
 
-            // The panel pivot is its center, so shift to top-left origin, then divide by Step.
             float fromLeft = local.x + _boardPanel.rect.width * 0.5f;
             float fromTop = _boardPanel.rect.height * 0.5f - local.y;
 
             int col = Mathf.FloorToInt(fromLeft / Step);
             int row = Mathf.FloorToInt(fromTop / Step);
             var coord = new GridCoordinate(col, row);
+            if (!_board.Contains(coord)) return; // clicked in a gap/outside
 
-            if (!_board.Contains(coord)) return; // clicked in the gap/outside
-            Select(coord);
+            if (CellClicked != null)
+            {
+                CellClicked.Invoke(coord);      // a match is driving the board
+            }
+            else
+            {
+                // Standalone (no match): log the cell for quick exploration/debugging.
+                Color c = _board.GetColor(coord);
+                Debug.Log($"{coord.Label}  \"{_board.GetName(coord)}\"  #{ColorUtility.ToHtmlStringRGB(c)}");
+            }
         }
-
-        private void Select(GridCoordinate coord)
-        {
-            // Restore the previously selected cell to its normal size.
-            if (_selected.HasValue)
-                _cells[Index(_selected.Value)].rectTransform.localScale = Vector3.one;
-
-            _selected = coord;
-
-            // Pop the selected cell: scale it up and draw it above its neighbors.
-            var img = _cells[Index(coord)];
-            img.rectTransform.localScale = Vector3.one * 1.25f;
-            img.rectTransform.SetAsLastSibling();
-
-            Color c = _board.GetColor(coord);
-            string name = _board.GetName(coord);
-            string msg = $"{coord.Label}   \"{name}\"   #{ColorUtility.ToHtmlStringRGB(c)}";
-            if (_readout != null) _readout.text = msg;
-            Debug.Log(msg);
-        }
-
-        // ----- Helpers --------------------------------------------------------------
 
         private static int Index(GridCoordinate c) => c.Row * ColorBoard.Columns + c.Column;
+
+        private Vector2 CellCenter(GridCoordinate c) =>
+            new Vector2(c.Column * Step + cellSize * 0.5f, -(c.Row * Step + cellSize * 0.5f));
     }
 
     /// <summary>
@@ -254,8 +278,7 @@ namespace HuesNCues.Game
 
     /// <summary>
     /// Fires a callback whenever its RectTransform changes size - Unity calls
-    /// OnRectTransformDimensionsChange on layout/resize. Used to re-fit the board
-    /// when the window (and therefore the full-screen area) changes size.
+    /// OnRectTransformDimensionsChange on layout/resize. Used to re-fit the board.
     /// </summary>
     public class RectResizeReceiver : MonoBehaviour
     {
