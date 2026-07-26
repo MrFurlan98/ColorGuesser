@@ -28,5 +28,11 @@ namespace HuesNCues.Core
 
         void Start();
         void Send(IMatchCommand command);
+
+        /// <summary>
+        /// Starts a fresh match with the same participants (scores reset). Offline this
+        /// rebuilds the local match; online the host rebuilds it for everyone.
+        /// </summary>
+        void RequestRestart();
     }
 }

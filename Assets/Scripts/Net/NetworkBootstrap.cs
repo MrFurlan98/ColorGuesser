@@ -17,7 +17,7 @@ namespace HuesNCues.Net
         private void OnGUI()
         {
             var nm = NetworkManager.Singleton;
-            GUILayout.BeginArea(new Rect(12, 250, 240, 220), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(590, 12, 240, 220), GUI.skin.box);
 
             if (nm == null)
             {

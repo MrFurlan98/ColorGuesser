@@ -55,5 +55,8 @@ namespace HuesNCues.Game
             if (submitButton != null) submitButton.gameObject.SetActive(visible);
         }
         public void ShowNext(bool visible) { if (nextButton != null) nextButton.gameObject.SetActive(visible); }
+
+        /// <summary>Shows/hides the whole HUD (hidden while the menu/lobby is up).</summary>
+        public void SetVisible(bool visible) { gameObject.SetActive(visible); }
     }
 }

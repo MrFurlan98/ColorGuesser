@@ -34,7 +34,6 @@ namespace HuesNCues.Game
 
         private IMatchSession _session;
         private MatchHud _hud;
-        private bool _ownsSession; // true only for the offline local session we created
 
         private void Start()
         {
@@ -52,7 +51,7 @@ namespace HuesNCues.Game
 
             board.CellClicked += OnCellClicked;
 
-            StartOfflineMatch(); // default; replaced by Bind() when networking starts
+            _hud.SetVisible(false); // the menu/lobby shows first; a game reveals the HUD
         }
 
         private void OnDestroy()
@@ -68,18 +67,19 @@ namespace HuesNCues.Game
 
         // ----- Session binding ------------------------------------------------------
 
+        /// <summary>Binds an external (e.g. networked) session. The HUD reveals itself
+        /// once the match actually starts (Refresh handles visibility by phase).</summary>
         public void Bind(IMatchSession session)
         {
             BindInternal(session);
-            _ownsSession = false;
             Refresh();
         }
 
-        private void StartOfflineMatch()
+        /// <summary>Starts a local hotseat match (chosen from the menu's "Play Offline").</summary>
+        public void StartHotseat()
         {
             BindInternal(new LocalMatchSession(DefaultRoster.Create(), board.Board, roundsPerMatch));
-            _ownsSession = true;
-            _session.Start();
+            _session.Start(); // fires StateChanged -> Refresh, which shows the HUD
         }
 
         private void BindInternal(IMatchSession session)
@@ -93,6 +93,7 @@ namespace HuesNCues.Game
 
         private void OnCellClicked(GridCoordinate coord)
         {
+            if (_session == null) return; // menu is up, no match yet
             var m = _session.Match;
             string me = _session.LocalPlayerId;
 
@@ -114,6 +115,7 @@ namespace HuesNCues.Game
 
         private void OnSubmitClue()
         {
+            if (_session == null) return;
             var cue = _session.Match.CueMaster;
             if (cue == null) return;
 
@@ -125,10 +127,11 @@ namespace HuesNCues.Game
 
         private void OnNext()
         {
+            if (_session == null) return;
             var m = _session.Match;
             if (m.Phase == MatchPhase.Finished)
             {
-                if (_ownsSession) StartOfflineMatch(); // offline "Play Again"; host restart comes later
+                _session.RequestRestart(); // offline: rebuild local match; online: host rebuilds for all
                 return;
             }
             _session.Send(new NextRoundCommand { PlayerId = _session.LocalPlayerId ?? m.CueMaster?.Id });
@@ -145,15 +148,13 @@ namespace HuesNCues.Game
 
             if (phase == MatchPhase.NotStarted)
             {
+                // In the menu/lobby: keep the game HUD hidden entirely.
+                _hud.SetVisible(false);
                 board.ClearMarkers();
                 board.ClearTargetHighlight();
-                _hud.ShowClueControls(false);
-                _hud.ShowSecret(false);
-                _hud.ShowNext(false);
-                _hud.SetStatus("Waiting for the host to start the match…");
-                _hud.SetScoreboard(BuildScoreboard(m));
                 return;
             }
+            _hud.SetVisible(true);
 
             bool cluePhase = phase == MatchPhase.CueMasterClue1 || phase == MatchPhase.CueMasterClue2;
             bool mayGiveClue = cluePhase && (me == null || amCue); // hotseat, or I'm the cue master

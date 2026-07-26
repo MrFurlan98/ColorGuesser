@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using HuesNCues.Core;
 using HuesNCues.Game;
 using Unity.Netcode;
@@ -33,6 +35,9 @@ namespace HuesNCues.Net
         private readonly SnapshotMatch _clientMatch = new SnapshotMatch(); // client only
         private readonly SnapshotMatch _emptyMatch = new SnapshotMatch();  // before the match starts
 
+        private readonly Dictionary<ulong, string> _names = new Dictionary<ulong, string>(); // server: clientId -> nickname
+        private LobbyRoster _lobby = new LobbyRoster { clientIds = new long[0], names = new string[0] }; // shown in the lobby
+
         public IReadOnlyMatch Match =>
             IsServer ? (_serverMatch != null ? (IReadOnlyMatch)_serverMatch : _emptyMatch) : _clientMatch;
 
@@ -51,6 +56,14 @@ namespace HuesNCues.Net
             }
         }
 
+        // ----- Lobby API (for the lobby UI) -----------------------------------------
+
+        public LobbyRoster CurrentLobby => _lobby;
+        public event Action LobbyChanged;
+        public bool AmHost => IsServer;
+        public bool InLobby => IsSpawned && Match.Phase == MatchPhase.NotStarted;
+        public void HostStartMatch() { if (IsServer) StartMatchServer(); }
+
         public override void OnNetworkSpawn()
         {
             if (board == null || matchView == null)
@@ -59,14 +72,29 @@ namespace HuesNCues.Net
                 return;
             }
 
-            if (IsServer) NetworkManager.OnClientConnectedCallback += OnClientConnected;
+            if (IsServer)
+            {
+                NetworkManager.OnClientConnectedCallback += OnClientConnected;
+                NetworkManager.OnClientDisconnectCallback += OnClientDisconnected;
+            }
             matchView.Bind(this); // UI switches from its offline session to this one
+
+            // Tell the host my nickname (chosen in the connect panel; host does this locally too).
+            string myName = PlayerPrefs.GetString(SessionBootstrap.NicknameKey, "Player");
+            SetNameRpc(Encoding.UTF8.GetBytes(myName));
         }
 
         public override void OnNetworkDespawn()
         {
             if (_serverMatch != null) _serverMatch.StateChanged -= OnServerMatchChanged;
-            if (NetworkManager != null) NetworkManager.OnClientConnectedCallback -= OnClientConnected;
+            if (NetworkManager != null)
+            {
+                NetworkManager.OnClientConnectedCallback -= OnClientConnected;
+                NetworkManager.OnClientDisconnectCallback -= OnClientDisconnected;
+            }
+            // Let the menu/lobby refresh (we are no longer connected).
+            LobbyChanged?.Invoke();
+            StateChanged?.Invoke();
         }
 
         // ----- IMatchSession --------------------------------------------------------
@@ -79,17 +107,25 @@ namespace HuesNCues.Net
             if (dto != null) SubmitCommandRpc(dto.ToBytes());
         }
 
-        // ----- Host: start button ---------------------------------------------------
+        public void RequestRestart() => RequestRestartRpc();
 
-        private void OnGUI()
+        [Rpc(SendTo.Server)]
+        private void RequestRestartRpc()
         {
-            if (!IsSpawned || !IsServer || _serverMatch != null) return;
+            if (!IsServer) return;
 
-            GUILayout.BeginArea(new Rect(330, 12, 220, 100), GUI.skin.box);
-            GUILayout.Label($"Players connected: {NetworkManager.ConnectedClientsIds.Count}");
-            GUILayout.Label("(need at least 2)");
-            if (GUILayout.Button("Start Match")) StartMatchServer();
-            GUILayout.EndArea();
+            if (_serverMatch != null)
+            {
+                _serverMatch.StateChanged -= OnServerMatchChanged;
+                _serverMatch = null;
+            }
+
+            StartMatchServer(); // rebuild from the currently connected clients
+            if (_serverMatch == null) // not enough players to restart -> back to waiting
+            {
+                StateChanged?.Invoke();
+                SnapshotRpc(MatchSnapshot.Capture(_emptyMatch).ToBytes());
+            }
         }
 
         private void StartMatchServer()
@@ -97,7 +133,7 @@ namespace HuesNCues.Net
             if (!IsServer || _serverMatch != null) return;
 
             var players = NetworkManager.ConnectedClientsIds
-                .Select((id, i) => new Player(id.ToString(), $"Player {i + 1}"))
+                .Select((id, i) => new Player(id.ToString(), NameFor(id, i)))
                 .ToList();
             if (players.Count < 2)
             {
@@ -110,6 +146,13 @@ namespace HuesNCues.Net
             _serverMatch.StartMatch();
         }
 
+        private string NameFor(ulong clientId, int index)
+        {
+            return _names.TryGetValue(clientId, out var n) && !string.IsNullOrWhiteSpace(n)
+                ? n
+                : $"Player {index + 1}";
+        }
+
         // ----- Server side ----------------------------------------------------------
 
         private void OnServerMatchChanged()
@@ -120,8 +163,55 @@ namespace HuesNCues.Net
 
         private void OnClientConnected(ulong clientId)
         {
-            if (IsServer && _serverMatch != null)
+            if (!IsServer) return;
+            BroadcastLobby();
+            if (_serverMatch != null)
                 SnapshotRpc(MatchSnapshot.Capture(_serverMatch).ToBytes());
+        }
+
+        private void OnClientDisconnected(ulong clientId)
+        {
+            if (!IsServer) return;
+
+            _names.Remove(clientId);
+            BroadcastLobby();
+
+            if (_serverMatch == null) return;
+
+            // A player left mid-match. MatchController can't drop a player, so we abort
+            // back to "waiting" rather than let the game stall on the missing player.
+            _serverMatch.StateChanged -= OnServerMatchChanged;
+            _serverMatch = null;
+            StateChanged?.Invoke();                                       // host UI -> waiting
+            SnapshotRpc(MatchSnapshot.Capture(_emptyMatch).ToBytes());    // clients -> waiting
+        }
+
+        [Rpc(SendTo.Server)]
+        private void SetNameRpc(byte[] nameUtf8, RpcParams rpcParams = default)
+        {
+            _names[rpcParams.Receive.SenderClientId] = Encoding.UTF8.GetString(nameUtf8);
+            BroadcastLobby();
+        }
+
+        private void BroadcastLobby()
+        {
+            if (!IsServer) return;
+
+            var ids = NetworkManager.ConnectedClientsIds.ToArray();
+            _lobby = new LobbyRoster
+            {
+                clientIds = ids.Select(id => (long)id).ToArray(),
+                names = ids.Select((id, i) => NameFor(id, i)).ToArray(),
+            };
+            LobbyChanged?.Invoke();       // host UI
+            LobbyRpc(_lobby.ToBytes());   // clients
+        }
+
+        [Rpc(SendTo.NotServer)]
+        private void LobbyRpc(byte[] json)
+        {
+            _lobby = LobbyRoster.FromBytes(json);
+            LobbyChanged?.Invoke();
         }
 
         [Rpc(SendTo.Server)]

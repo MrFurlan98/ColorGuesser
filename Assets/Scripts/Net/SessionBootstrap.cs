@@ -20,11 +20,31 @@ namespace HuesNCues.Net
     {
         [SerializeField] private int maxPlayers = 4;
 
-        private string _joinCode = "";
+        public const string NicknameKey = "nickname";
+
         private string _status = "Not connected";
         private string _hostCode = "";
+        private string _nickname = "";
         private bool _busy;
         private ISession _session;
+
+        // Public API for the menu UI (MenuController) to drive.
+        public string Status => _status;
+        public string JoinCode => _hostCode;
+        public bool IsBusy => _busy;
+        public bool InSession => _session != null;
+        public string Nickname
+        {
+            get => _nickname;
+            set { _nickname = value ?? ""; PlayerPrefs.SetString(NicknameKey, _nickname); }
+        }
+
+        /// <summary>Raised whenever the connection status/session changes.</summary>
+        public event Action Changed;
+
+        private void Awake() => _nickname = PlayerPrefs.GetString(NicknameKey, "Player");
+
+        private void SetStatus(string s) { _status = s; Changed?.Invoke(); }
 
         private async Task EnsureSignedInAsync()
         {
@@ -42,79 +62,54 @@ namespace HuesNCues.Net
             }
         }
 
-        private async void Host()
+        public async void Host()
         {
-            if (_busy) return;
+            if (_busy || InSession) return;
             _busy = true;
-            _status = "Creating session…";
+            SetStatus("Creating session…");
             try
             {
                 await EnsureSignedInAsync();
                 var options = new SessionOptions { MaxPlayers = maxPlayers }.WithRelayNetwork();
                 _session = await MultiplayerService.Instance.CreateSessionAsync(options);
                 _hostCode = _session.Code;
-                _status = "Hosting";
+                SetStatus("Hosting");
             }
             catch (Exception e)
             {
-                _status = "Host failed: " + e.Message;
+                SetStatus("Host failed: " + e.Message);
                 Debug.LogException(e);
             }
-            finally { _busy = false; }
+            finally { _busy = false; Changed?.Invoke(); }
         }
 
-        private async void Join(string code)
+        public async void Join(string code)
         {
-            if (_busy || string.IsNullOrWhiteSpace(code)) return;
+            if (_busy || InSession || string.IsNullOrWhiteSpace(code)) return;
             _busy = true;
-            _status = "Joining…";
+            SetStatus("Joining…");
             try
             {
                 await EnsureSignedInAsync();
                 _session = await MultiplayerService.Instance.JoinSessionByCodeAsync(code.Trim());
-                _status = "Joined";
+                SetStatus("Joined");
             }
             catch (Exception e)
             {
-                _status = "Join failed: " + e.Message;
+                SetStatus("Join failed: " + e.Message);
                 Debug.LogException(e);
             }
-            finally { _busy = false; }
+            finally { _busy = false; Changed?.Invoke(); }
         }
 
-        private async void Leave()
+        public async void Leave()
         {
             try { if (_session != null) await _session.LeaveAsync(); }
             catch (Exception e) { Debug.LogException(e); }
             _session = null;
             _hostCode = "";
-            _status = "Not connected";
+            SetStatus("Not connected");
         }
 
-        private void OnGUI()
-        {
-            GUILayout.BeginArea(new Rect(12, 12, 300, 220), GUI.skin.box);
-            GUILayout.Label("Online (Relay)");
-            GUILayout.Label($"Status: {_status}");
-
-            if (_session == null)
-            {
-                GUI.enabled = !_busy;
-                if (GUILayout.Button("Host (create session)")) Host();
-                GUILayout.Space(6);
-                GUILayout.Label("Join code:");
-                _joinCode = GUILayout.TextField(_joinCode);
-                if (GUILayout.Button("Join by code")) Join(_joinCode);
-                GUI.enabled = true;
-            }
-            else
-            {
-                if (!string.IsNullOrEmpty(_hostCode))
-                    GUILayout.Label($"Share this code:\n<b>{_hostCode}</b>");
-                if (GUILayout.Button("Leave")) Leave();
-            }
-
-            GUILayout.EndArea();
-        }
     }
 }
