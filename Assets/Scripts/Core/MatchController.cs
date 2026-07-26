@@ -17,7 +17,7 @@ namespace HuesNCues.Core
     ///   CueMasterClue1 -> Guessing1 -> CueMasterClue2 -> Guessing2 -> Reveal
     /// then NextRound() starts the next round or ends the match.
     /// </summary>
-    public class MatchController
+    public class MatchController : IReadOnlyMatch
     {
         private readonly List<Player> _players;
         private readonly ColorBoard _board;

@@ -1,0 +1,149 @@
+using System;
+using System.Linq;
+using HuesNCues.Core;
+using HuesNCues.Game;
+using Unity.Netcode;
+using UnityEngine;
+
+namespace HuesNCues.Net
+{
+    /// <summary>
+    /// The Network Gateway: runs a match host-authoritatively over Netcode for
+    /// GameObjects, and implements IMatchSession so MatchView drives it exactly like
+    /// the local session.
+    ///
+    ///   - Each connected client is one player; the player's id IS its network client
+    ///     id (as a string), so "which player am I" is just my LocalClientId.
+    ///   - The host presses "Start Match" once everyone has joined; the match is built
+    ///     from the connected clients.
+    ///   - Server validates every command against the sender's id, so no client can
+    ///     act as another player.
+    ///
+    /// Lives on an in-scene NetworkObject (created by Tools > Hues N Cues > Set Up
+    /// Networking) with references to the scene's BoardView and MatchView.
+    /// </summary>
+    [RequireComponent(typeof(NetworkObject))]
+    public class MatchNetwork : NetworkBehaviour, IMatchSession
+    {
+        [SerializeField] private BoardView board;
+        [SerializeField] private MatchView matchView;
+        [SerializeField] private int roundsPerMatch = 4;
+
+        private MatchController _serverMatch;                              // server only
+        private readonly SnapshotMatch _clientMatch = new SnapshotMatch(); // client only
+        private readonly SnapshotMatch _emptyMatch = new SnapshotMatch();  // before the match starts
+
+        public IReadOnlyMatch Match =>
+            IsServer ? (_serverMatch != null ? (IReadOnlyMatch)_serverMatch : _emptyMatch) : _clientMatch;
+
+        public event Action StateChanged;
+
+        /// <summary>My player id is my network client id (or null if I am not a player).</summary>
+        public string LocalPlayerId
+        {
+            get
+            {
+                if (NetworkManager == null) return null;
+                string me = NetworkManager.LocalClientId.ToString();
+                foreach (var p in Match.Players)
+                    if (p.Id == me) return me;
+                return null;
+            }
+        }
+
+        public override void OnNetworkSpawn()
+        {
+            if (board == null || matchView == null)
+            {
+                Debug.LogError("MatchNetwork needs BoardView and MatchView references (run Set Up Networking).");
+                return;
+            }
+
+            if (IsServer) NetworkManager.OnClientConnectedCallback += OnClientConnected;
+            matchView.Bind(this); // UI switches from its offline session to this one
+        }
+
+        public override void OnNetworkDespawn()
+        {
+            if (_serverMatch != null) _serverMatch.StateChanged -= OnServerMatchChanged;
+            if (NetworkManager != null) NetworkManager.OnClientConnectedCallback -= OnClientConnected;
+        }
+
+        // ----- IMatchSession --------------------------------------------------------
+
+        public void Start() { /* the host starts the match with the Start Match button */ }
+
+        public void Send(IMatchCommand command)
+        {
+            var dto = CommandDto.From(command);
+            if (dto != null) SubmitCommandRpc(dto.ToBytes());
+        }
+
+        // ----- Host: start button ---------------------------------------------------
+
+        private void OnGUI()
+        {
+            if (!IsSpawned || !IsServer || _serverMatch != null) return;
+
+            GUILayout.BeginArea(new Rect(330, 12, 220, 100), GUI.skin.box);
+            GUILayout.Label($"Players connected: {NetworkManager.ConnectedClientsIds.Count}");
+            GUILayout.Label("(need at least 2)");
+            if (GUILayout.Button("Start Match")) StartMatchServer();
+            GUILayout.EndArea();
+        }
+
+        private void StartMatchServer()
+        {
+            if (!IsServer || _serverMatch != null) return;
+
+            var players = NetworkManager.ConnectedClientsIds
+                .Select((id, i) => new Player(id.ToString(), $"Player {i + 1}"))
+                .ToList();
+            if (players.Count < 2)
+            {
+                Debug.LogWarning("Need at least 2 connected players to start.");
+                return;
+            }
+
+            _serverMatch = new MatchController(players, board.Board, roundsPerMatch);
+            _serverMatch.StateChanged += OnServerMatchChanged;
+            _serverMatch.StartMatch();
+        }
+
+        // ----- Server side ----------------------------------------------------------
+
+        private void OnServerMatchChanged()
+        {
+            StateChanged?.Invoke();                                       // host's own UI
+            SnapshotRpc(MatchSnapshot.Capture(_serverMatch).ToBytes());   // every client
+        }
+
+        private void OnClientConnected(ulong clientId)
+        {
+            if (IsServer && _serverMatch != null)
+                SnapshotRpc(MatchSnapshot.Capture(_serverMatch).ToBytes());
+        }
+
+        [Rpc(SendTo.Server)]
+        private void SubmitCommandRpc(byte[] json, RpcParams rpcParams = default)
+        {
+            if (_serverMatch == null) return;
+            var dto = CommandDto.FromBytes(json);
+            if (dto == null) return;
+
+            // Ownership: the command's player must be the client that sent it.
+            if (dto.playerId != rpcParams.Receive.SenderClientId.ToString()) return;
+
+            dto.ToCommand()?.ApplyTo(_serverMatch);
+        }
+
+        // ----- Client side ----------------------------------------------------------
+
+        [Rpc(SendTo.NotServer)]
+        private void SnapshotRpc(byte[] json)
+        {
+            _clientMatch.Apply(MatchSnapshot.FromBytes(json));
+            StateChanged?.Invoke();
+        }
+    }
+}

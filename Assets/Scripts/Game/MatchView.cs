@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Linq;
 using HuesNCues.Core;
 using UnityEngine;
@@ -6,13 +5,17 @@ using UnityEngine;
 namespace HuesNCues.Game
 {
     /// <summary>
-    /// Drives a local hotseat match. It owns the MatchController (the rules), listens
-    /// to the BoardView (the grid) and updates a MatchHud (the view). All game rules
-    /// live in Core; this class only translates clicks/buttons into Submit* calls and
-    /// redraws when the match state changes (Observer pattern via StateChanged).
+    /// Drives a match through an IMatchSession (the seam): reads state from
+    /// session.Match, listens to StateChanged, sends commands. It works unchanged for
+    /// a local (hotseat) session and a networked one.
     ///
-    /// Scene setup: put this on a GameObject, then assign BoardView, the MatchHud
-    /// prefab and the PlayerMarker prefab in the inspector, and press Play.
+    /// Ownership: session.LocalPlayerId tells us which player this client controls.
+    ///   - null  -> hotseat: one screen drives every player in turn.
+    ///   - set   -> multiplayer: you may only act as your own player, and the secret
+    ///              color is shown only to the cue master.
+    ///
+    /// Markers are rendered FROM state (not on click), so local and networked drawing
+    /// are identical.
     /// </summary>
     public class MatchView : MonoBehaviour
     {
@@ -20,12 +23,6 @@ namespace HuesNCues.Game
         [SerializeField] private MatchHud hudPrefab;
         [SerializeField] private GameObject markerPrefab;
         [SerializeField] private int roundsPerMatch = 4;
-
-        // For now the roster is fixed; a lobby/nickname screen comes in a later step.
-        private static readonly (string Id, string Name)[] Roster =
-        {
-            ("p1", "Ana"), ("p2", "Bia"), ("p3", "Caio"),
-        };
 
         private static readonly Color[] Palette =
         {
@@ -35,12 +32,9 @@ namespace HuesNCues.Game
             new Color(0.85f, 0.65f, 0.15f),
         };
 
-        private ColorBoard _colorBoard;
-        private MatchController _match;
+        private IMatchSession _session;
         private MatchHud _hud;
-        private List<Player> _players;
-        private readonly Dictionary<string, Color> _playerColors = new Dictionary<string, Color>();
-        private int _lastRound;
+        private bool _ownsSession; // true only for the offline local session we created
 
         private void Start()
         {
@@ -51,21 +45,20 @@ namespace HuesNCues.Game
                 return;
             }
 
-            _colorBoard = board.Board;
-
             _hud = Instantiate(hudPrefab);
             ((RectTransform)_hud.transform).SetParent(board.Canvas.transform, false);
             _hud.SubmitClueRequested += OnSubmitClue;
             _hud.NextRequested += OnNext;
 
             board.CellClicked += OnCellClicked;
-            StartNewMatch();
+
+            StartOfflineMatch(); // default; replaced by Bind() when networking starts
         }
 
         private void OnDestroy()
         {
             if (board != null) board.CellClicked -= OnCellClicked;
-            if (_match != null) _match.StateChanged -= Refresh;
+            if (_session != null) _session.StateChanged -= Refresh;
             if (_hud != null)
             {
                 _hud.SubmitClueRequested -= OnSubmitClue;
@@ -73,132 +66,212 @@ namespace HuesNCues.Game
             }
         }
 
-        // ----- Match lifecycle ------------------------------------------------------
+        // ----- Session binding ------------------------------------------------------
 
-        private void StartNewMatch()
+        public void Bind(IMatchSession session)
         {
-            board.ClearMarkers();
-            board.ClearTargetHighlight();
-
-            _players = Roster.Select(r => new Player(r.Id, r.Name)).ToList();
-            for (int i = 0; i < _players.Count; i++)
-                _playerColors[_players[i].Id] = Palette[i % Palette.Length];
-
-            if (_match != null) _match.StateChanged -= Refresh;
-            _match = new MatchController(_players, _colorBoard, roundsPerMatch);
-            _match.StateChanged += Refresh;
-
-            _lastRound = 0;
-            _match.StartMatch(); // fires StateChanged -> Refresh
+            BindInternal(session);
+            _ownsSession = false;
+            Refresh();
         }
 
-        // ----- Input handlers -------------------------------------------------------
+        private void StartOfflineMatch()
+        {
+            BindInternal(new LocalMatchSession(DefaultRoster.Create(), board.Board, roundsPerMatch));
+            _ownsSession = true;
+            _session.Start();
+        }
+
+        private void BindInternal(IMatchSession session)
+        {
+            if (_session != null) _session.StateChanged -= Refresh;
+            _session = session;
+            _session.StateChanged += Refresh;
+        }
+
+        // ----- Input -> commands ----------------------------------------------------
 
         private void OnCellClicked(GridCoordinate coord)
         {
-            var guesser = CurrentGuesser();
-            if (guesser == null) return; // not a guessing phase
+            var m = _session.Match;
+            string me = _session.LocalPlayerId;
 
-            if (_match.SubmitGuess(guesser.Id, coord))
-                board.PlaceMarker(markerPrefab, coord, _playerColors[guesser.Id], Initial(guesser));
+            if (me == null) // hotseat: guess for whoever is up next
+            {
+                var g = CurrentGuesser();
+                if (g != null) _session.Send(new SubmitGuessCommand { PlayerId = g.Id, Coord = coord });
+                return;
+            }
+
+            // Multiplayer: only guess as myself, only if I'm a guesser who hasn't guessed.
+            if (m.Phase != MatchPhase.Guessing1 && m.Phase != MatchPhase.Guessing2) return;
+            if (m.CueMaster != null && m.CueMaster.Id == me) return;
+            var dict = m.Phase == MatchPhase.Guessing1 ? m.FirstGuesses : m.SecondGuesses;
+            if (dict.ContainsKey(me)) return;
+
+            _session.Send(new SubmitGuessCommand { PlayerId = me, Coord = coord });
         }
 
         private void OnSubmitClue()
         {
-            var cue = _match.CueMaster;
+            var cue = _session.Match.CueMaster;
             if (cue == null) return;
-            if (_match.SubmitClue(cue.Id, _hud.ClueText))
-                _hud.ClueText = string.Empty;
+
+            string me = _session.LocalPlayerId;
+            if (me != null && me != cue.Id) return; // only the cue master client may submit
+
+            _session.Send(new SubmitClueCommand { PlayerId = cue.Id, Word = _hud.ClueText });
         }
 
         private void OnNext()
         {
-            if (_match.Phase == MatchPhase.Finished) StartNewMatch();
-            else _match.NextRound();
+            var m = _session.Match;
+            if (m.Phase == MatchPhase.Finished)
+            {
+                if (_ownsSession) StartOfflineMatch(); // offline "Play Again"; host restart comes later
+                return;
+            }
+            _session.Send(new NextRoundCommand { PlayerId = _session.LocalPlayerId ?? m.CueMaster?.Id });
         }
 
-        // ----- Redraw (driven by MatchController.StateChanged) ----------------------
+        // ----- Redraw (driven by StateChanged) --------------------------------------
 
         private void Refresh()
         {
-            if (_lastRound != _match.RoundNumber)
+            var m = _session.Match;
+            var phase = m.Phase;
+            string me = _session.LocalPlayerId;
+            bool amCue = me != null && m.CueMaster != null && m.CueMaster.Id == me;
+
+            if (phase == MatchPhase.NotStarted)
             {
                 board.ClearMarkers();
                 board.ClearTargetHighlight();
-                _lastRound = _match.RoundNumber;
+                _hud.ShowClueControls(false);
+                _hud.ShowSecret(false);
+                _hud.ShowNext(false);
+                _hud.SetStatus("Waiting for the host to start the match…");
+                _hud.SetScoreboard(BuildScoreboard(m));
+                return;
             }
 
-            var phase = _match.Phase;
             bool cluePhase = phase == MatchPhase.CueMasterClue1 || phase == MatchPhase.CueMasterClue2;
+            bool mayGiveClue = cluePhase && (me == null || amCue); // hotseat, or I'm the cue master
 
-            _hud.ShowClueControls(cluePhase);
-            _hud.ShowSecret(cluePhase);
+            RedrawMarkers(m);
+            if (phase == MatchPhase.Reveal) board.ShowTarget(m.Target);
+            else board.ClearTargetHighlight();
+
+            _hud.ShowClueControls(mayGiveClue);
+            _hud.ShowSecret(mayGiveClue); // only the cue master sees the secret color
             _hud.ShowNext(phase == MatchPhase.Reveal || phase == MatchPhase.Finished);
 
-            if (cluePhase)
+            if (mayGiveClue)
             {
-                _hud.SetSecretColor(board.ColorOf(_match.Target));
+                _hud.SetSecretColor(board.ColorOf(m.Target));
                 _hud.ClueText = string.Empty;
             }
-            if (phase == MatchPhase.Reveal) board.ShowTarget(_match.Target);
             _hud.SetNextLabel(phase == MatchPhase.Finished ? "Play Again" : "Next Round");
-
-            _hud.SetStatus(BuildStatus(phase));
-            _hud.SetScoreboard(BuildScoreboard());
+            _hud.SetStatus(BuildStatus(m, phase, me, amCue));
+            _hud.SetScoreboard(BuildScoreboard(m));
         }
 
-        private string BuildStatus(MatchPhase phase)
+        private void RedrawMarkers(IReadOnlyMatch match)
         {
-            int r = _match.RoundNumber, tot = _match.TotalRounds;
-            string cue = _match.CueMaster != null ? _match.CueMaster.Name : "";
-            var guesser = CurrentGuesser();
-            string who = guesser != null ? guesser.Name : "";
-
-            switch (phase)
-            {
-                case MatchPhase.CueMasterClue1:
-                    return $"Round {r}/{tot}  ·  Cue Master: {cue}  ·  Type a 1-word clue for the secret color.";
-                case MatchPhase.Guessing1:
-                    return $"Round {r}/{tot}  ·  Clue: \"{_match.Clue1}\"  ·  {who}, click a cell to guess.";
-                case MatchPhase.CueMasterClue2:
-                    return $"Round {r}/{tot}  ·  Cue Master: {cue}  ·  Type your 2nd clue word.";
-                case MatchPhase.Guessing2:
-                    return $"Round {r}/{tot}  ·  Clues: \"{_match.Clue1}\" \"{_match.Clue2}\"  ·  {who}, click your 2nd guess.";
-                case MatchPhase.Reveal:
-                    return $"The color was \"{board.NameOf(_match.Target)}\" ({_match.Target.Label}).  Scores updated — press Next Round.";
-                case MatchPhase.Finished:
-                    return $"Game over! Winner: {WinnerName()}.  Press Play Again.";
-                default:
-                    return "";
-            }
+            board.ClearMarkers();
+            foreach (var kv in match.FirstGuesses) PlaceGuessMarker(match, kv.Key, kv.Value);
+            foreach (var kv in match.SecondGuesses) PlaceGuessMarker(match, kv.Key, kv.Value);
         }
 
-        private string BuildScoreboard()
+        private void PlaceGuessMarker(IReadOnlyMatch match, string playerId, GridCoordinate coord)
+        {
+            var player = match.Players.FirstOrDefault(p => p.Id == playerId);
+            board.PlaceMarker(markerPrefab, coord, ColorForPlayer(match, playerId), player != null ? Initial(player) : "?");
+        }
+
+        // ----- Status / scoreboard text ---------------------------------------------
+
+        private string BuildStatus(IReadOnlyMatch m, MatchPhase phase, string me, bool amCue)
+        {
+            int r = m.RoundNumber, tot = m.TotalRounds;
+            string cue = m.CueMaster != null ? m.CueMaster.Name : "";
+
+            // Reveal / Finished read the same for everyone.
+            if (phase == MatchPhase.Reveal)
+                return $"The color was \"{board.NameOf(m.Target)}\" ({m.Target.Label}).  Scores updated — press Next Round.";
+            if (phase == MatchPhase.Finished)
+                return $"Game over! Winner: {WinnerName(m)}.  Press Play Again.";
+
+            if (me == null) // hotseat wording
+            {
+                string who = CurrentGuesser()?.Name ?? "";
+                switch (phase)
+                {
+                    case MatchPhase.CueMasterClue1: return $"Round {r}/{tot}  ·  Cue Master: {cue}  ·  Type a 1-word clue.";
+                    case MatchPhase.CueMasterClue2: return $"Round {r}/{tot}  ·  Cue Master: {cue}  ·  Type your 2nd clue word.";
+                    case MatchPhase.Guessing1: return $"Round {r}/{tot}  ·  Clue: \"{m.Clue1}\"  ·  {who}, click a cell.";
+                    case MatchPhase.Guessing2: return $"Round {r}/{tot}  ·  Clues: \"{m.Clue1}\" \"{m.Clue2}\"  ·  {who}, 2nd guess.";
+                    default: return "";
+                }
+            }
+
+            // Multiplayer wording (from this player's perspective).
+            bool clue1 = phase == MatchPhase.CueMasterClue1;
+            bool guessing = phase == MatchPhase.Guessing1 || phase == MatchPhase.Guessing2;
+            string clues = phase == MatchPhase.Guessing2 ? $"\"{m.Clue1}\" \"{m.Clue2}\"" : $"\"{m.Clue1}\"";
+
+            if (clue1 || phase == MatchPhase.CueMasterClue2)
+                return amCue
+                    ? $"Round {r}/{tot}  ·  You are the Cue Master. Type {(clue1 ? "a" : "your 2nd")} clue word."
+                    : $"Round {r}/{tot}  ·  Waiting for {cue} to give {(clue1 ? "a" : "the 2nd")} clue…";
+
+            if (guessing)
+            {
+                if (amCue) return $"Round {r}/{tot}  ·  Clue: {clues}  ·  Waiting for guesses…";
+                var dict = phase == MatchPhase.Guessing1 ? m.FirstGuesses : m.SecondGuesses;
+                return dict.ContainsKey(me)
+                    ? $"Round {r}/{tot}  ·  Clue: {clues}  ·  Waiting for other players…"
+                    : $"Round {r}/{tot}  ·  Clue: {clues}  ·  Your turn — click a cell!";
+            }
+
+            return "";
+        }
+
+        private static string BuildScoreboard(IReadOnlyMatch match)
         {
             var sb = new System.Text.StringBuilder("<b>SCORES</b>\n");
-            foreach (var p in _players.OrderByDescending(p => p.Score))
+            foreach (var p in match.Players.OrderByDescending(p => p.Score))
             {
-                bool isCue = _match.CueMaster != null && p.Id == _match.CueMaster.Id;
+                bool isCue = match.CueMaster != null && p.Id == match.CueMaster.Id;
                 sb.AppendLine($"{(isCue ? "★ " : "   ")}{p.Name}: {p.Score}");
             }
             return sb.ToString();
         }
 
-        private string WinnerName()
+        private static string WinnerName(IReadOnlyMatch match)
         {
-            var best = _players.OrderByDescending(p => p.Score).First();
-            return $"{best.Name} ({best.Score})";
+            var best = match.Players.OrderByDescending(p => p.Score).FirstOrDefault();
+            return best != null ? $"{best.Name} ({best.Score})" : "-";
         }
 
         // ----- Helpers --------------------------------------------------------------
 
         private Player CurrentGuesser()
         {
-            IReadOnlyDictionary<string, GridCoordinate> dict =
-                _match.Phase == MatchPhase.Guessing1 ? _match.FirstGuesses :
-                _match.Phase == MatchPhase.Guessing2 ? _match.SecondGuesses : null;
+            var m = _session.Match;
+            System.Collections.Generic.IReadOnlyDictionary<string, GridCoordinate> dict =
+                m.Phase == MatchPhase.Guessing1 ? m.FirstGuesses :
+                m.Phase == MatchPhase.Guessing2 ? m.SecondGuesses : null;
             if (dict == null) return null;
-            return _match.Guessers.FirstOrDefault(p => !dict.ContainsKey(p.Id));
+            return m.Guessers.FirstOrDefault(p => !dict.ContainsKey(p.Id));
+        }
+
+        private static Color ColorForPlayer(IReadOnlyMatch match, string playerId)
+        {
+            var players = match.Players;
+            for (int i = 0; i < players.Count; i++)
+                if (players[i].Id == playerId) return Palette[i % Palette.Length];
+            return Color.white;
         }
 
         private static string Initial(Player p) =>
