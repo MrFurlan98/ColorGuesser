@@ -29,8 +29,8 @@ namespace HuesNCues.Net
     {
         [SerializeField] private BoardView board;
         [SerializeField] private MatchView matchView;
-        [Tooltip("Points needed to win. Rounds continue until a player reaches this.")]
-        [SerializeField] private int targetScore = 25;
+        [Tooltip("Fallback settings; the host overrides these from the lobby dropdowns.")]
+        [SerializeField] private LobbySettings defaultSettings = new LobbySettings();
 
         private MatchController _serverMatch;                              // server only
         private readonly SnapshotMatch _clientMatch = new SnapshotMatch(); // client only
@@ -38,10 +38,16 @@ namespace HuesNCues.Net
 
         private readonly Dictionary<ulong, string> _names = new Dictionary<ulong, string>();  // server: clientId -> nickname
         private readonly Dictionary<ulong, int> _colors = new Dictionary<ulong, int>();       // server: clientId -> palette index
+        private readonly Dictionary<ulong, bool> _ready = new Dictionary<ulong, bool>();      // server: clientId -> ready
         private LobbyRoster _lobby = new LobbyRoster                                          // shown in the lobby
         {
-            clientIds = new long[0], names = new string[0], colorIndexes = new int[0]
+            clientIds = new long[0], names = new string[0], colorIndexes = new int[0],
+            ready = new bool[0], hostId = -1,
         };
+
+        private LobbySettings _settings;      // host-chosen; mirrored to clients via the roster
+        private float _guessDeadline = -1f;   // local countdown for the current guessing phase
+        private MatchPhase _lastPhase = MatchPhase.NotStarted;
 
         public IReadOnlyMatch Match =>
             IsServer ? (_serverMatch != null ? (IReadOnlyMatch)_serverMatch : _emptyMatch) : _clientMatch;
@@ -68,6 +74,90 @@ namespace HuesNCues.Net
         public bool IsHost => IsServer; // also satisfies IMatchSession.IsHost
         public bool InLobby => IsSpawned && Match.Phase == MatchPhase.NotStarted;
         public void HostStartMatch() { if (IsServer) StartMatchServer(); }
+
+        /// <summary>Is this client marked ready? (The host is always considered ready.)</summary>
+        public bool LocalReady
+        {
+            get
+            {
+                if (NetworkManager == null || _lobby?.clientIds == null) return false;
+                long me = (long)NetworkManager.LocalClientId;
+                for (int i = 0; i < _lobby.clientIds.Length; i++)
+                    if (_lobby.clientIds[i] == me)
+                        return _lobby.ready != null && i < _lobby.ready.Length && _lobby.ready[i];
+                return false;
+            }
+        }
+
+        /// <summary>True when every non-host player has marked themselves ready.</summary>
+        public bool EveryoneReady
+        {
+            get
+            {
+                if (_lobby?.clientIds == null || _lobby.clientIds.Length < 2) return false;
+                for (int i = 0; i < _lobby.clientIds.Length; i++)
+                {
+                    if (_lobby.clientIds[i] == _lobby.hostId) continue; // host doesn't ready up
+                    if (_lobby.ready == null || i >= _lobby.ready.Length || !_lobby.ready[i]) return false;
+                }
+                return true;
+            }
+        }
+
+        /// <summary>The room settings everyone currently sees (host-chosen).</summary>
+        public LobbySettings Settings => _lobby?.settings ?? _settings ?? defaultSettings;
+
+        /// <summary>Host only: change the room settings and sync them to everyone.</summary>
+        public void SetSettings(int maxPlayers, int targetScore, int guessSeconds)
+        {
+            if (!IsServer) return;
+            _settings = new LobbySettings
+            {
+                maxPlayers = Mathf.Clamp(maxPlayers, 3, 10),
+                targetScore = Mathf.Max(1, targetScore),
+                guessSeconds = Mathf.Max(0, guessSeconds),
+            };
+            BroadcastLobby();
+        }
+
+        /// <summary>Seconds left in the current guessing phase (0 when untimed).</summary>
+        public float GuessSecondsLeft =>
+            _guessDeadline < 0f ? 0f : Mathf.Max(0f, _guessDeadline - Time.time);
+
+        /// <summary>Marks this client ready / not ready (ignored for the host).</summary>
+        public void SetLocalReady(bool ready) => SetReadyRpc(ready);
+
+        /// <summary>
+        /// Drives the guess timer. Every peer tracks its own countdown for display, but
+        /// only the server actually ends the phase, so the host stays authoritative.
+        /// </summary>
+        private void Update()
+        {
+            if (!IsSpawned) return;
+
+            var phase = Match.Phase;
+            bool guessing = phase == MatchPhase.Guessing1 || phase == MatchPhase.Guessing2;
+            int limit = Settings != null ? Settings.guessSeconds : 0;
+
+            if (phase != _lastPhase)
+            {
+                _lastPhase = phase;
+                _guessDeadline = (guessing && limit > 0) ? Time.time + limit : -1f;
+            }
+
+            if (!guessing || _guessDeadline < 0f) return;
+            if (Time.time < _guessDeadline) return;
+
+            _guessDeadline = -1f;
+            if (IsServer && _serverMatch != null) _serverMatch.ForceEndGuessing();
+        }
+
+        [Rpc(SendTo.Server)]
+        private void SetReadyRpc(bool ready, RpcParams rpcParams = default)
+        {
+            _ready[rpcParams.Receive.SenderClientId] = ready;
+            BroadcastLobby();
+        }
 
         public override void OnNetworkSpawn()
         {
@@ -148,7 +238,7 @@ namespace HuesNCues.Net
                 return;
             }
 
-            _serverMatch = new MatchController(players, board.Board, targetScore);
+            _serverMatch = new MatchController(players, board.Board, Settings.targetScore);
             _serverMatch.StateChanged += OnServerMatchChanged;
             _serverMatch.StartMatch();
         }
@@ -184,6 +274,7 @@ namespace HuesNCues.Net
 
             _names.Remove(clientId);
             _colors.Remove(clientId); // frees their colour for the next player
+            _ready.Remove(clientId);
             BroadcastLobby();
 
             if (_serverMatch == null) return;
@@ -237,6 +328,11 @@ namespace HuesNCues.Net
                 clientIds = ids.Select(id => (long)id).ToArray(),
                 names = ids.Select((id, i) => NameFor(id, i)).ToArray(),
                 colorIndexes = ids.Select(ColorFor).ToArray(),
+                // The host counts as ready; everyone else opts in.
+                ready = ids.Select(id => id == NetworkManager.LocalClientId ||
+                                         (_ready.TryGetValue(id, out var r) && r)).ToArray(),
+                hostId = (long)NetworkManager.LocalClientId,
+                settings = (_settings ?? defaultSettings).Clone(),
             };
             LobbyChanged?.Invoke();       // host UI
             LobbyRpc(_lobby.ToBytes());   // clients

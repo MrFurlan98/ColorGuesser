@@ -126,6 +126,28 @@ namespace HuesNCues.Core
             return true;
         }
 
+        /// <summary>
+        /// Ends the current guessing phase early (the guess timer ran out). Players who
+        /// did not lock a guess simply score nothing for that cube. Valid only during a
+        /// guessing phase; returns false otherwise.
+        /// </summary>
+        public bool ForceEndGuessing()
+        {
+            if (Phase == MatchPhase.Guessing1)
+            {
+                Phase = MatchPhase.CueMasterClue2;
+                StateChanged?.Invoke();
+                return true;
+            }
+            if (Phase == MatchPhase.Guessing2)
+            {
+                RevealAndScore();
+                StateChanged?.Invoke();
+                return true;
+            }
+            return false;
+        }
+
         private void RevealAndScore()
         {
             // Each guesser scores both of their cubes by proximity to the target.

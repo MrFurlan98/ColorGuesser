@@ -1,14 +1,13 @@
-using System.Text;
+using System.Collections.Generic;
 using HuesNCues.Game;
 using UnityEngine;
 
 namespace HuesNCues.Net
 {
     /// <summary>
-    /// Drives the in-room lobby: shows the room code + connected players, and the
-    /// host's Start button. Visible only while in a session and before the match
-    /// starts; it reads the roster from MatchNetwork and reacts to its LobbyChanged /
-    /// StateChanged events.
+    /// Drives the in-room lobby: the room code (+ copy to clipboard), the player grid,
+    /// and the main action button - "Iniciar Partida" for the host, "Pronto" for
+    /// everyone else. Visible only while connected and before the match starts.
     /// </summary>
     public class LobbyController : MonoBehaviour
     {
@@ -18,6 +17,7 @@ namespace HuesNCues.Net
         [SerializeField] private BoardView board;
 
         private LobbyHud _hud;
+        private readonly List<LobbyPlayerInfo> _players = new List<LobbyPlayerInfo>();
 
         private void Start()
         {
@@ -30,8 +30,10 @@ namespace HuesNCues.Net
 
             _hud = Instantiate(hudPrefab);
             ((RectTransform)_hud.transform).SetParent(board.Canvas.transform, false);
-            _hud.StartClicked += OnStart;
+            _hud.ActionClicked += OnAction;
             _hud.LeaveClicked += OnLeave;
+            _hud.CopyCodeClicked += OnCopyCode;
+            _hud.SettingsChanged += OnSettingsChanged;
 
             session.Changed += Refresh;
             match.LobbyChanged += Refresh;
@@ -50,13 +52,35 @@ namespace HuesNCues.Net
             }
             if (_hud != null)
             {
-                _hud.StartClicked -= OnStart;
+                _hud.ActionClicked -= OnAction;
                 _hud.LeaveClicked -= OnLeave;
+                _hud.CopyCodeClicked -= OnCopyCode;
+                _hud.SettingsChanged -= OnSettingsChanged;
             }
         }
 
-        private void OnStart() => match.HostStartMatch();
+        // ----- Actions --------------------------------------------------------------
+
+        private void OnAction()
+        {
+            if (match.IsHost) match.HostStartMatch();   // host starts the match
+            else match.SetLocalReady(!match.LocalReady); // everyone else toggles ready
+        }
+
         private void OnLeave() => session.Leave();
+
+        private void OnSettingsChanged(int maxPlayers, int targetScore, int guessSeconds)
+        {
+            if (match.IsHost) match.SetSettings(maxPlayers, targetScore, guessSeconds);
+        }
+
+        private void OnCopyCode()
+        {
+            if (!string.IsNullOrEmpty(session.JoinCode))
+                GUIUtility.systemCopyBuffer = session.JoinCode;
+        }
+
+        // ----- Redraw ---------------------------------------------------------------
 
         private void Refresh()
         {
@@ -64,27 +88,52 @@ namespace HuesNCues.Net
             _hud.SetVisible(show);
             if (!show) return;
 
-            _hud.SetCode(string.IsNullOrEmpty(session.JoinCode) ? "" : $"Room code: {session.JoinCode}");
-
             var roster = match.CurrentLobby;
-            int count = 0;
-            var sb = new StringBuilder();
-            if (roster?.names != null)
-                for (int i = 0; i < roster.names.Length; i++)
-                {
-                    // Show each player in their assigned colour (after host de-duplication).
-                    int colorIndex = (roster.colorIndexes != null && i < roster.colorIndexes.Length)
-                        ? roster.colorIndexes[i] : 0;
-                    sb.AppendLine($"• <color=#{HuesNCues.Core.PlayerPalette.Hex(colorIndex)}>{roster.names[i]}</color>");
-                    count++;
-                }
-            _hud.SetPlayerList(sb.ToString());
+            BuildPlayerList(roster);
+            _hud.SetPlayers(_players);
 
-            _hud.SetStartVisible(match.IsHost);
-            _hud.SetStartInteractable(match.IsHost && count >= 2);
-            _hud.SetStatus(match.IsHost
-                ? (count >= 2 ? "Ready when you are." : "Waiting for players (need 2+)…")
-                : "Waiting for the host to start…");
+            // Room settings: only the host edits them; clients just see the synced values.
+            var settings = match.Settings;
+            _hud.SetSettingsInteractable(match.IsHost);
+            if (!match.IsHost)
+                _hud.SetSettings(settings.maxPlayers, settings.targetScore, settings.guessSeconds);
+            _hud.SetPlayerCount(_players.Count, settings.maxPlayers);
+
+            bool hasCode = !string.IsNullOrEmpty(session.JoinCode);
+            _hud.SetCode(hasCode ? session.JoinCode : "");
+            _hud.SetCopyVisible(hasCode);
+
+            if (match.IsHost)
+            {
+                // Enabled only with 2+ players and everyone marked ready.
+                _hud.SetActionLabel("INICIAR PARTIDA");
+                _hud.SetActionInteractable(_players.Count >= 2 && match.EveryoneReady);
+            }
+            else
+            {
+                _hud.SetActionLabel(match.LocalReady ? "CANCELAR" : "PRONTO");
+                _hud.SetActionInteractable(true);
+            }
+        }
+
+        private void BuildPlayerList(LobbyRoster roster)
+        {
+            _players.Clear();
+            if (roster?.names == null) return;
+
+            for (int i = 0; i < roster.names.Length; i++)
+            {
+                bool isHost = roster.clientIds != null && i < roster.clientIds.Length &&
+                              roster.clientIds[i] == roster.hostId;
+                _players.Add(new LobbyPlayerInfo
+                {
+                    Name = roster.names[i],
+                    ColorIndex = (roster.colorIndexes != null && i < roster.colorIndexes.Length)
+                        ? roster.colorIndexes[i] : 0,
+                    IsHost = isHost,
+                    IsReady = isHost || (roster.ready != null && i < roster.ready.Length && roster.ready[i]),
+                });
+            }
         }
     }
 }

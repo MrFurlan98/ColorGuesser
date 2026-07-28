@@ -24,6 +24,9 @@ namespace HuesNCues.Game
         [SerializeField] private TextMeshProUGUI nextLabel;
         [SerializeField] private TextMeshProUGUI scoreboardText;
 
+        [Tooltip("Optional countdown shown during the guessing phases.")]
+        [SerializeField] private TextMeshProUGUI timerText;
+
         /// <summary>Raised when the cue master submits a clue (button or Enter key).</summary>
         public event Action SubmitClueRequested;
 
@@ -45,6 +48,15 @@ namespace HuesNCues.Game
 
         public void SetStatus(string text) { if (statusText != null) statusText.text = text; }
         public void SetScoreboard(string text) { if (scoreboardText != null) scoreboardText.text = text; }
+
+        /// <summary>Shows the guess countdown, or hides it when there is no timer.</summary>
+        public void SetTimer(float secondsLeft)
+        {
+            if (timerText == null) return;
+            bool show = secondsLeft > 0f;
+            timerText.gameObject.SetActive(show);
+            if (show) timerText.text = Mathf.CeilToInt(secondsLeft).ToString();
+        }
         public void SetSecretColor(Color color) { if (secretSwatch != null) secretSwatch.color = color; }
         public void SetNextLabel(string text) { if (nextLabel != null) nextLabel.text = text; }
 

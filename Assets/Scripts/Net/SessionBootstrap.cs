@@ -19,22 +19,29 @@ namespace HuesNCues.Net
     /// </summary>
     public class SessionBootstrap : MonoBehaviour
     {
-        [SerializeField] private int maxPlayers = 4;
+        [Tooltip("Hard cap for the Relay session. The host's lobby dropdown chooses the " +
+                 "room size within this, so keep it at the highest allowed value.")]
+        [SerializeField] private int maxPlayers = 10;
 
         public const string NicknameKey = "nickname";
         public const string ColorKey = "colorIndex";
 
         private string _status = "Not connected";
-        private string _hostCode = "";
         private string _nickname = "";
         private bool _busy;
         private ISession _session;
 
         // Public API for the menu UI (MenuController) to drive.
         public string Status => _status;
-        public string JoinCode => _hostCode;
+
+        /// <summary>The room code. Read from the session itself, so clients who joined
+        /// see it too (not just the host who created it).</summary>
+        public string JoinCode => _session != null ? _session.Code : "";
         public bool IsBusy => _busy;
         public bool InSession => _session != null;
+
+        /// <summary>Maximum players allowed in a room (shown as "2/4" in the lobby).</summary>
+        public int MaxPlayers => maxPlayers;
         public string Nickname
         {
             get => _nickname;
@@ -82,7 +89,6 @@ namespace HuesNCues.Net
                 await EnsureSignedInAsync();
                 var options = new SessionOptions { MaxPlayers = maxPlayers }.WithRelayNetwork();
                 _session = await MultiplayerService.Instance.CreateSessionAsync(options);
-                _hostCode = _session.Code;
                 SetStatus("Hosting");
             }
             catch (Exception e)
@@ -117,7 +123,6 @@ namespace HuesNCues.Net
             try { if (_session != null) await _session.LeaveAsync(); }
             catch (Exception e) { Debug.LogException(e); }
             _session = null;
-            _hostCode = "";
             SetStatus("Not connected");
         }
 

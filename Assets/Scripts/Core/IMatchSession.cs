@@ -30,6 +30,10 @@ namespace HuesNCues.Core
         /// Used to gate host-only actions like Next Round / Play Again.</summary>
         bool IsHost { get; }
 
+        /// <summary>Seconds left in the current guessing phase, or 0 when there is no
+        /// timer (offline games, or the host chose "no limit").</summary>
+        float GuessSecondsLeft { get; }
+
         void Start();
         void Send(IMatchCommand command);
 

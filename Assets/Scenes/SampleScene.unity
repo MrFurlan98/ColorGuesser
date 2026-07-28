@@ -510,7 +510,7 @@ MonoBehaviour:
   board: {fileID: 522753105}
   hudPrefab: {fileID: 2514744589441715001, guid: 06d3d8ddf4b66774ea52d603ea3c98e3, type: 3}
   markerPrefab: {fileID: 6553473153395512214, guid: 9591c332f92de7248aa4451829a9a8c4, type: 3}
-  roundsPerMatch: 4
+  targetScore: 25
 --- !u!1 &1887838802
 GameObject:
   m_ObjectHideFlags: 0
@@ -585,7 +585,10 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   board: {fileID: 522753105}
   matchView: {fileID: 1672300260}
-  roundsPerMatch: 2
+  defaultSettings:
+    maxPlayers: 6
+    targetScore: 25
+    guessSeconds: 60
 --- !u!1 &1942437709
 GameObject:
   m_ObjectHideFlags: 0

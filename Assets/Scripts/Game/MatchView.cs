@@ -60,6 +60,16 @@ namespace HuesNCues.Game
             }
         }
 
+        // The countdown changes every frame, so it is driven here rather than by the
+        // state-changed event (which only fires on phase/score changes).
+        private void Update()
+        {
+            if (_session == null || _hud == null) return;
+            var phase = _session.Match.Phase;
+            bool guessing = phase == MatchPhase.Guessing1 || phase == MatchPhase.Guessing2;
+            _hud.SetTimer(guessing ? _session.GuessSecondsLeft : 0f);
+        }
+
         // ----- Session binding ------------------------------------------------------
 
         /// <summary>Binds an external (e.g. networked) session. The HUD reveals itself
