@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using HuesNCues.Core;
 using Unity.Services.Authentication;
 using Unity.Services.Core;
 using Unity.Services.Multiplayer;
@@ -21,6 +22,7 @@ namespace HuesNCues.Net
         [SerializeField] private int maxPlayers = 4;
 
         public const string NicknameKey = "nickname";
+        public const string ColorKey = "colorIndex";
 
         private string _status = "Not connected";
         private string _hostCode = "";
@@ -37,6 +39,14 @@ namespace HuesNCues.Net
         {
             get => _nickname;
             set { _nickname = value ?? ""; PlayerPrefs.SetString(NicknameKey, _nickname); }
+        }
+
+        /// <summary>Chosen PlayerPalette index. The host may reassign it if two players
+        /// pick the same colour (first to enter keeps it).</summary>
+        public int ColorIndex
+        {
+            get => PlayerPalette.Clamp(PlayerPrefs.GetInt(ColorKey, 0));
+            set => PlayerPrefs.SetInt(ColorKey, PlayerPalette.Clamp(value));
         }
 
         /// <summary>Raised whenever the connection status/session changes.</summary>

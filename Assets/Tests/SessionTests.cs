@@ -19,7 +19,7 @@ namespace HuesNCues.Tests
                 new Player("B", "Bia"),
                 new Player("C", "Caio"),
             };
-            return new LocalMatchSession(players, ColorBoard.CreateProcedural(), 2, new System.Random(1));
+            return new LocalMatchSession(players, ColorBoard.CreateProcedural(), 25, new System.Random(1));
         }
 
         [Test]

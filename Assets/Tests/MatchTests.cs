@@ -10,7 +10,7 @@ namespace HuesNCues.Tests
     /// </summary>
     public class MatchTests
     {
-        private static MatchController NewMatch(int totalRounds = 2)
+        private static MatchController NewMatch(int targetScore = 25)
         {
             var players = new[]
             {
@@ -19,7 +19,17 @@ namespace HuesNCues.Tests
                 new Player("C", "Caio"),
             };
             // Fixed seed -> deterministic target, so the test is repeatable.
-            return new MatchController(players, ColorBoard.CreateProcedural(), totalRounds, new System.Random(1));
+            return new MatchController(players, ColorBoard.CreateProcedural(), targetScore, new System.Random(1));
+        }
+
+        /// <summary>Plays one complete round with every guesser guessing exactly.</summary>
+        private static void PlayPerfectRound(MatchController m)
+        {
+            var cue = m.CueMaster;
+            m.SubmitClue(cue.Id, "a");
+            foreach (var g in m.Guessers.ToList()) m.SubmitGuess(g.Id, m.Target);
+            m.SubmitClue(cue.Id, "b");
+            foreach (var g in m.Guessers.ToList()) m.SubmitGuess(g.Id, m.Target);
         }
 
         [Test]
@@ -101,20 +111,48 @@ namespace HuesNCues.Tests
         }
 
         [Test]
-        public void SingleRoundMatchFinishesAfterReveal()
+        public void MatchFinishesOnceAPlayerReachesTheTargetScore()
         {
-            var m = NewMatch(totalRounds: 1);
+            // Guessers score 6 per perfect round, so a target of 6 ends it in one round.
+            var m = NewMatch(targetScore: 6);
             m.StartMatch();
-            var cue = m.CueMaster;
-
-            m.SubmitClue(cue.Id, "a");
-            foreach (var g in m.Guessers.ToList()) m.SubmitGuess(g.Id, m.Target);
-            m.SubmitClue(cue.Id, "b");
-            foreach (var g in m.Guessers.ToList()) m.SubmitGuess(g.Id, m.Target);
+            PlayPerfectRound(m);
 
             Assert.AreEqual(MatchPhase.Reveal, m.Phase);
+            Assert.IsTrue(m.HasWinner);
             Assert.IsTrue(m.NextRound());
             Assert.AreEqual(MatchPhase.Finished, m.Phase);
+        }
+
+        [Test]
+        public void MatchKeepsGoingWhileNobodyHasReachedTheTarget()
+        {
+            // 6 points per perfect round for a guesser: after one round nobody has 25.
+            var m = NewMatch(targetScore: 25);
+            m.StartMatch();
+            PlayPerfectRound(m);
+
+            Assert.IsFalse(m.HasWinner);
+            Assert.IsTrue(m.NextRound());
+            Assert.AreEqual(MatchPhase.CueMasterClue1, m.Phase); // a new round, not Finished
+            Assert.AreEqual(2, m.RoundNumber);
+        }
+
+        [Test]
+        public void WinnerIsTheFirstPlayerToReachTwentyFive()
+        {
+            var m = NewMatch(targetScore: 25);
+            m.StartMatch();
+
+            // Play rounds until someone gets there; guard against an endless loop.
+            for (int i = 0; i < 20 && m.Phase != MatchPhase.Finished; i++)
+            {
+                PlayPerfectRound(m);
+                m.NextRound();
+            }
+
+            Assert.AreEqual(MatchPhase.Finished, m.Phase);
+            Assert.IsTrue(m.Players.Any(p => p.Score >= 25));
         }
     }
 }

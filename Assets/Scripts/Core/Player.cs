@@ -2,8 +2,8 @@ namespace HuesNCues.Core
 {
     /// <summary>
     /// A participant in a match. Score accumulates across rounds. Only the Core
-    /// assembly can change the score (via the match logic), so the UI/network layers
-    /// can read it but never tamper with it.
+    /// assembly (and the Net assembly, which rebuilds state from the host) can change
+    /// the score or colour, so the UI can read them but never tamper with them.
     /// </summary>
     public class Player
     {
@@ -11,10 +11,15 @@ namespace HuesNCues.Core
         public string Name { get; }
         public int Score { get; internal set; }
 
-        public Player(string id, string name)
+        /// <summary>Index into <see cref="PlayerPalette"/>: this player's marker colour.
+        /// Chosen in the menu; the host guarantees it is unique per match.</summary>
+        public int ColorIndex { get; internal set; }
+
+        public Player(string id, string name, int colorIndex = 0)
         {
             Id = id;
             Name = name;
+            ColorIndex = colorIndex;
         }
     }
 }

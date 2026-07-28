@@ -29,14 +29,19 @@ namespace HuesNCues.Net
     {
         [SerializeField] private BoardView board;
         [SerializeField] private MatchView matchView;
-        [SerializeField] private int roundsPerMatch = 4;
+        [Tooltip("Points needed to win. Rounds continue until a player reaches this.")]
+        [SerializeField] private int targetScore = 25;
 
         private MatchController _serverMatch;                              // server only
         private readonly SnapshotMatch _clientMatch = new SnapshotMatch(); // client only
         private readonly SnapshotMatch _emptyMatch = new SnapshotMatch();  // before the match starts
 
-        private readonly Dictionary<ulong, string> _names = new Dictionary<ulong, string>(); // server: clientId -> nickname
-        private LobbyRoster _lobby = new LobbyRoster { clientIds = new long[0], names = new string[0] }; // shown in the lobby
+        private readonly Dictionary<ulong, string> _names = new Dictionary<ulong, string>();  // server: clientId -> nickname
+        private readonly Dictionary<ulong, int> _colors = new Dictionary<ulong, int>();       // server: clientId -> palette index
+        private LobbyRoster _lobby = new LobbyRoster                                          // shown in the lobby
+        {
+            clientIds = new long[0], names = new string[0], colorIndexes = new int[0]
+        };
 
         public IReadOnlyMatch Match =>
             IsServer ? (_serverMatch != null ? (IReadOnlyMatch)_serverMatch : _emptyMatch) : _clientMatch;
@@ -60,7 +65,7 @@ namespace HuesNCues.Net
 
         public LobbyRoster CurrentLobby => _lobby;
         public event Action LobbyChanged;
-        public bool AmHost => IsServer;
+        public bool IsHost => IsServer; // also satisfies IMatchSession.IsHost
         public bool InLobby => IsSpawned && Match.Phase == MatchPhase.NotStarted;
         public void HostStartMatch() { if (IsServer) StartMatchServer(); }
 
@@ -79,9 +84,10 @@ namespace HuesNCues.Net
             }
             matchView.Bind(this); // UI switches from its offline session to this one
 
-            // Tell the host my nickname (chosen in the connect panel; host does this locally too).
+            // Tell the host my chosen nickname + colour (picked in the menu).
             string myName = PlayerPrefs.GetString(SessionBootstrap.NicknameKey, "Player");
-            SetNameRpc(Encoding.UTF8.GetBytes(myName));
+            int myColor = PlayerPrefs.GetInt(SessionBootstrap.ColorKey, 0);
+            SetProfileRpc(Encoding.UTF8.GetBytes(myName), myColor);
         }
 
         public override void OnNetworkDespawn()
@@ -110,9 +116,10 @@ namespace HuesNCues.Net
         public void RequestRestart() => RequestRestartRpc();
 
         [Rpc(SendTo.Server)]
-        private void RequestRestartRpc()
+        private void RequestRestartRpc(RpcParams rpcParams = default)
         {
             if (!IsServer) return;
+            if (rpcParams.Receive.SenderClientId != NetworkManager.LocalClientId) return; // host only
 
             if (_serverMatch != null)
             {
@@ -133,7 +140,7 @@ namespace HuesNCues.Net
             if (!IsServer || _serverMatch != null) return;
 
             var players = NetworkManager.ConnectedClientsIds
-                .Select((id, i) => new Player(id.ToString(), NameFor(id, i)))
+                .Select((id, i) => new Player(id.ToString(), NameFor(id, i), ColorFor(id)))
                 .ToList();
             if (players.Count < 2)
             {
@@ -141,7 +148,7 @@ namespace HuesNCues.Net
                 return;
             }
 
-            _serverMatch = new MatchController(players, board.Board, roundsPerMatch);
+            _serverMatch = new MatchController(players, board.Board, targetScore);
             _serverMatch.StateChanged += OnServerMatchChanged;
             _serverMatch.StartMatch();
         }
@@ -165,8 +172,10 @@ namespace HuesNCues.Net
         {
             if (!IsServer) return;
             BroadcastLobby();
-            if (_serverMatch != null)
-                SnapshotRpc(MatchSnapshot.Capture(_serverMatch).ToBytes());
+            // Always sync the current state to (re)connecting clients - even when no
+            // match is running - so they land on the lobby instead of a stale game.
+            IReadOnlyMatch current = _serverMatch != null ? (IReadOnlyMatch)_serverMatch : _emptyMatch;
+            SnapshotRpc(MatchSnapshot.Capture(current).ToBytes());
         }
 
         private void OnClientDisconnected(ulong clientId)
@@ -174,6 +183,7 @@ namespace HuesNCues.Net
             if (!IsServer) return;
 
             _names.Remove(clientId);
+            _colors.Remove(clientId); // frees their colour for the next player
             BroadcastLobby();
 
             if (_serverMatch == null) return;
@@ -187,11 +197,35 @@ namespace HuesNCues.Net
         }
 
         [Rpc(SendTo.Server)]
-        private void SetNameRpc(byte[] nameUtf8, RpcParams rpcParams = default)
+        private void SetProfileRpc(byte[] nameUtf8, int requestedColor, RpcParams rpcParams = default)
         {
-            _names[rpcParams.Receive.SenderClientId] = Encoding.UTF8.GetString(nameUtf8);
+            ulong sender = rpcParams.Receive.SenderClientId;
+            _names[sender] = Encoding.UTF8.GetString(nameUtf8);
+            _colors[sender] = ResolveColor(sender, requestedColor);
             BroadcastLobby();
         }
+
+        /// <summary>
+        /// First come, first served: a player keeps the colour they asked for unless
+        /// somebody already holds it, in which case they get a random free one.
+        /// </summary>
+        private int ResolveColor(ulong client, int requested)
+        {
+            requested = PlayerPalette.Clamp(requested);
+
+            bool taken = _colors.Any(kv => kv.Key != client && kv.Value == requested);
+            if (!taken) return requested;
+
+            var free = Enumerable.Range(0, PlayerPalette.Count)
+                .Where(i => !_colors.Any(kv => kv.Key != client && kv.Value == i))
+                .ToList();
+            if (free.Count == 0) return requested; // more players than colours: allow a repeat
+
+            return free[UnityEngine.Random.Range(0, free.Count)];
+        }
+
+        private int ColorFor(ulong clientId) =>
+            _colors.TryGetValue(clientId, out var c) ? c : 0;
 
         private void BroadcastLobby()
         {
@@ -202,6 +236,7 @@ namespace HuesNCues.Net
             {
                 clientIds = ids.Select(id => (long)id).ToArray(),
                 names = ids.Select((id, i) => NameFor(id, i)).ToArray(),
+                colorIndexes = ids.Select(ColorFor).ToArray(),
             };
             LobbyChanged?.Invoke();       // host UI
             LobbyRpc(_lobby.ToBytes());   // clients
@@ -223,6 +258,8 @@ namespace HuesNCues.Net
 
             // Ownership: the command's player must be the client that sent it.
             if (dto.playerId != rpcParams.Receive.SenderClientId.ToString()) return;
+            // Only the host advances rounds (command type 2 = NextRound).
+            if (dto.type == 2 && rpcParams.Receive.SenderClientId != NetworkManager.LocalClientId) return;
 
             dto.ToCommand()?.ApplyTo(_serverMatch);
         }

@@ -26,6 +26,10 @@ namespace HuesNCues.Core
         /// </summary>
         string LocalPlayerId { get; }
 
+        /// <summary>True if this client controls match flow (offline, or the network host).
+        /// Used to gate host-only actions like Next Round / Play Again.</summary>
+        bool IsHost { get; }
+
         void Start();
         void Send(IMatchCommand command);
 

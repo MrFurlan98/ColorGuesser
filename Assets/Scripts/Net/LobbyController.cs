@@ -70,16 +70,19 @@ namespace HuesNCues.Net
             int count = 0;
             var sb = new StringBuilder();
             if (roster?.names != null)
-                foreach (var name in roster.names)
+                for (int i = 0; i < roster.names.Length; i++)
                 {
-                    sb.AppendLine("• " + name);
+                    // Show each player in their assigned colour (after host de-duplication).
+                    int colorIndex = (roster.colorIndexes != null && i < roster.colorIndexes.Length)
+                        ? roster.colorIndexes[i] : 0;
+                    sb.AppendLine($"• <color=#{HuesNCues.Core.PlayerPalette.Hex(colorIndex)}>{roster.names[i]}</color>");
                     count++;
                 }
             _hud.SetPlayerList(sb.ToString());
 
-            _hud.SetStartVisible(match.AmHost);
-            _hud.SetStartInteractable(match.AmHost && count >= 2);
-            _hud.SetStatus(match.AmHost
+            _hud.SetStartVisible(match.IsHost);
+            _hud.SetStartInteractable(match.IsHost && count >= 2);
+            _hud.SetStatus(match.IsHost
                 ? (count >= 2 ? "Ready when you are." : "Waiting for players (need 2+)…")
                 : "Waiting for the host to start…");
         }

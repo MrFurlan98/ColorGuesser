@@ -36,11 +36,21 @@ namespace HuesNCues.Game
         [Tooltip("Optional sprite used for every cell (e.g. rounded/bordered). Empty = solid square.")]
         [SerializeField] private Sprite cellSprite;
 
+        [Tooltip("Optional material for every cell (Shader Graph must use the Canvas target, " +
+                 "and multiply by Vertex Color to keep each cell's own color).")]
+        [SerializeField] private Material cellMaterial;
+
         [Tooltip("Optional. Board is drawn under this Canvas; if left empty, one is created.")]
         [SerializeField] private Canvas canvas;
 
-        [Tooltip("Empty space (in reference pixels) kept around the board when fitting it to the window.")]
-        [SerializeField] private float screenPadding = 40f;
+        [Header("Board area margins (reference px) — leave room for the HUD")]
+        [Tooltip("Space for the status line at the top.")]
+        [SerializeField] private float marginTop = 100f;
+        [Tooltip("Space for the scoreboard on the right.")]
+        [SerializeField] private float marginRight = 420f;
+        [Tooltip("Space for the clue/next controls at the bottom.")]
+        [SerializeField] private float marginBottom = 160f;
+        [SerializeField] private float marginLeft = 40f;
 
         private ColorBoard _board;              // loaded from Resources/BoardData.csv
         private Image[] _cells;                 // indexed by row * Columns + col
@@ -123,6 +133,14 @@ namespace HuesNCues.Game
             _highlighted = null;
         }
 
+        /// <summary>Shows/hides the whole board (hidden on the menu/lobby, shown in a match).</summary>
+        public void SetBoardVisible(bool visible)
+        {
+            if (_boardArea == null) return;
+            _boardArea.gameObject.SetActive(visible);
+            if (visible) FitBoard(); // re-fit in case the window resized while hidden
+        }
+
         // ----- Loading & construction -----------------------------------------------
 
         private ColorBoard LoadBoard()
@@ -169,15 +187,17 @@ namespace HuesNCues.Game
             float totalW = ColorBoard.Columns * Step - spacing; // no trailing gap
             float totalH = ColorBoard.Rows * Step - spacing;
 
-            // A full-screen area that follows the canvas size. The board is fitted
-            // inside it, so it stays fully visible at any window size / aspect ratio.
+            // An area that follows the canvas size but leaves room for the HUD (status
+            // on top, scoreboard on the right, clue/next at the bottom). The board is
+            // fitted inside it, so it stays fully visible and never overlaps the HUD,
+            // at any window size / aspect ratio.
             var areaGO = new GameObject("BoardArea", typeof(RectTransform));
             _boardArea = areaGO.GetComponent<RectTransform>();
             _boardArea.SetParent(canvasTransform, false);
             _boardArea.anchorMin = Vector2.zero;
             _boardArea.anchorMax = Vector2.one;
-            _boardArea.offsetMin = new Vector2(screenPadding, screenPadding);
-            _boardArea.offsetMax = new Vector2(-screenPadding, -screenPadding);
+            _boardArea.offsetMin = new Vector2(marginLeft, marginBottom);
+            _boardArea.offsetMax = new Vector2(-marginRight, -marginTop);
             areaGO.AddComponent<RectResizeReceiver>().Init(FitBoard);
 
             // The panel: fixed design size, centered, and the single click catcher.
@@ -210,6 +230,8 @@ namespace HuesNCues.Game
                 img.type = Image.Type.Sliced;
                 img.color = _board.GetColor(coord);
                 img.raycastTarget = false; // the key optimization
+                // One shared material across all cells keeps uGUI batching intact.
+                if (cellMaterial != null) img.material = cellMaterial;
 
                 _cells[Index(coord)] = img;
             }

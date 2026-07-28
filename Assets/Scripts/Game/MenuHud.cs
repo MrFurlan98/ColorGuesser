@@ -1,4 +1,5 @@
 using System;
+using HuesNCues.Core;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -6,42 +7,87 @@ using UnityEngine.UI;
 namespace HuesNCues.Game
 {
     /// <summary>
-    /// Passive view for the main menu (Humble Object / MVP): nickname, Host, Join by
-    /// code, and Play Offline. It holds no logic - MenuController wires the events to
-    /// the session. Lives on the MenuHud prefab so it can be restyled freely.
+    /// Passive view for the main menu (Humble Object / MVP): nickname, colour choice,
+    /// Host, and a two-step Join (the code field stays hidden until "Join Game" is
+    /// pressed). It holds no logic - MenuController wires the events to the session.
+    /// Lives on the MenuHud prefab so it can be restyled freely.
     /// </summary>
     public class MenuHud : MonoBehaviour
     {
         [SerializeField] private TMP_InputField nicknameInput;
         [SerializeField] private Button hostButton;
-        [SerializeField] private TMP_InputField joinCodeInput;
+
+        [Header("Colour choice — drag the 10 colour toggles (each has a ToggleColorController)")]
+        [SerializeField] private ToggleColorController[] colorOptions;
+
+        [Header("Join flow")]
+        [Tooltip("The button that REVEALS the join fields (your 'Join GameButton').")]
+        [SerializeField] private Button showJoinButton;
+        [Tooltip("Object holding the code field + confirm button; hidden until revealed.")]
+        [SerializeField] private GameObject joinGroup;
+        [Tooltip("The button that actually joins (your 'Join Button').")]
         [SerializeField] private Button joinButton;
-        [SerializeField] private Button offlineButton;
-        [SerializeField] private TextMeshProUGUI statusText;
+        [SerializeField] private TMP_InputField joinCodeInput;
 
         public event Action HostClicked;
         public event Action JoinClicked;
-        public event Action OfflineClicked;
         public event Action<string> NicknameChanged;
+        public event Action<int> ColorChanged;
 
         private void Awake()
         {
             if (hostButton != null) hostButton.onClick.AddListener(() => HostClicked?.Invoke());
             if (joinButton != null) joinButton.onClick.AddListener(() => JoinClicked?.Invoke());
-            if (offlineButton != null) offlineButton.onClick.AddListener(() => OfflineClicked?.Invoke());
             if (nicknameInput != null) nicknameInput.onValueChanged.AddListener(v => NicknameChanged?.Invoke(v));
+            if (joinCodeInput != null) joinCodeInput.onSubmit.AddListener(_ => JoinClicked?.Invoke());
+
+            // "Join Game" reveals the code field instead of joining immediately.
+            if (showJoinButton != null) showJoinButton.onClick.AddListener(ShowJoinFields);
+            if (joinGroup != null) joinGroup.SetActive(false);
+
+            // Each colour option reports its own palette index when picked.
+            if (colorOptions != null)
+                foreach (var option in colorOptions)
+                {
+                    if (option == null) continue;
+                    option.Selected += index => ColorChanged?.Invoke(index);
+                }
+        }
+
+        /// <summary>Reveals the join code field + confirm button (hides the reveal button).</summary>
+        public void ShowJoinFields()
+        {
+            if (joinGroup != null) joinGroup.SetActive(true);
+            if (showJoinButton != null) showJoinButton.gameObject.SetActive(false);
+            if (joinCodeInput != null) joinCodeInput.Select();
         }
 
         public string JoinCode => joinCodeInput != null ? joinCodeInput.text : string.Empty;
 
         public void SetNickname(string nickname) { if (nicknameInput != null) nicknameInput.text = nickname; }
-        public void SetStatus(string text) { if (statusText != null) statusText.text = text; }
+
+        /// <summary>Ticks the option for the given palette index (without re-firing events).</summary>
+        public void SetSelectedColor(int index)
+        {
+            if (colorOptions == null) return;
+            foreach (var option in colorOptions)
+                if (option != null)
+                    option.SetOn(option.ColorIndex == index);
+        }
+
+        /// <summary>Asks every colour option to tint its own swatch.</summary>
+        public void ApplyPaletteColors()
+        {
+            if (colorOptions == null) return;
+            foreach (var option in colorOptions)
+                if (option != null) option.Apply();
+        }
 
         public void SetInteractable(bool value)
         {
             if (hostButton != null) hostButton.interactable = value;
             if (joinButton != null) joinButton.interactable = value;
-            if (offlineButton != null) offlineButton.interactable = value;
+            if (showJoinButton != null) showJoinButton.interactable = value;
         }
 
         public void SetVisible(bool visible) { gameObject.SetActive(visible); }

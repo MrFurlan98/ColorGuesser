@@ -12,9 +12,9 @@ namespace HuesNCues.Core
     /// </summary>
     public sealed class LocalMatchSession : IMatchSession
     {
-        private readonly List<(string Id, string Name)> _seeds;
+        private readonly List<(string Id, string Name, int ColorIndex)> _seeds;
         private readonly ColorBoard _board;
-        private readonly int _rounds;
+        private readonly int _targetScore;
         private readonly Random _rng;
 
         private MatchController _match;
@@ -23,14 +23,15 @@ namespace HuesNCues.Core
         public event Action StateChanged;
 
         // Offline is hotseat: one screen controls every player, so there is no
-        // single "local" player.
+        // single "local" player, and it always controls match flow.
         public string LocalPlayerId => null;
+        public bool IsHost => true;
 
-        public LocalMatchSession(IEnumerable<Player> players, ColorBoard board, int totalRounds, Random rng = null)
+        public LocalMatchSession(IEnumerable<Player> players, ColorBoard board, int targetScore, Random rng = null)
         {
-            _seeds = players.Select(p => (p.Id, p.Name)).ToList();
+            _seeds = players.Select(p => (p.Id, p.Name, p.ColorIndex)).ToList();
             _board = board;
-            _rounds = totalRounds;
+            _targetScore = targetScore;
             _rng = rng;
             _match = Build();
         }
@@ -38,7 +39,8 @@ namespace HuesNCues.Core
         private MatchController Build()
         {
             // Fresh Player objects so a restart resets scores.
-            var m = new MatchController(_seeds.Select(s => new Player(s.Id, s.Name)), _board, _rounds, _rng);
+            var m = new MatchController(
+                _seeds.Select(s => new Player(s.Id, s.Name, s.ColorIndex)), _board, _targetScore, _rng);
             m.StateChanged += RaiseStateChanged;
             return m;
         }

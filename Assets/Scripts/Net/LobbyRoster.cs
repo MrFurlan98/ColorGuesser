@@ -13,6 +13,7 @@ namespace HuesNCues.Net
     {
         public long[] clientIds;
         public string[] names;
+        public int[] colorIndexes; // index into PlayerPalette, unique per player
 
         public byte[] ToBytes() => Encoding.UTF8.GetBytes(JsonUtility.ToJson(this));
         public static LobbyRoster FromBytes(byte[] bytes) => JsonUtility.FromJson<LobbyRoster>(Encoding.UTF8.GetString(bytes));

@@ -28,7 +28,9 @@ namespace HuesNCues.Core
         private readonly Dictionary<string, GridCoordinate> _guess2 = new Dictionary<string, GridCoordinate>();
 
         public IReadOnlyList<Player> Players => _players;
-        public int TotalRounds { get; }
+
+        /// <summary>Points needed to win; rounds continue until a player reaches it.</summary>
+        public int TargetScore { get; }
         public int RoundNumber { get; private set; }               // 1-based; 0 before start
         public MatchPhase Phase { get; private set; } = MatchPhase.NotStarted;
         public GridCoordinate Target { get; private set; }
@@ -41,15 +43,18 @@ namespace HuesNCues.Core
         /// <summary>Raised after any state change, so a view can refresh itself.</summary>
         public event Action StateChanged;
 
-        public MatchController(IEnumerable<Player> players, ColorBoard board, int totalRounds, Random rng = null)
+        public MatchController(IEnumerable<Player> players, ColorBoard board, int targetScore, Random rng = null)
         {
             _players = players?.ToList() ?? throw new ArgumentNullException(nameof(players));
             if (_players.Count < 2) throw new ArgumentException("A match needs at least 2 players.");
             _board = board ?? throw new ArgumentNullException(nameof(board));
-            if (totalRounds < 1) throw new ArgumentException("A match needs at least 1 round.");
-            TotalRounds = totalRounds;
+            if (targetScore < 1) throw new ArgumentException("The target score must be at least 1.");
+            TargetScore = targetScore;
             _rng = rng ?? new Random();
         }
+
+        /// <summary>True once any player has reached the target score.</summary>
+        public bool HasWinner => _players.Any(p => p.Score >= TargetScore);
 
         /// <summary>The player giving clues this round (rotates each round).</summary>
         public Player CueMaster =>
@@ -140,14 +145,14 @@ namespace HuesNCues.Core
         }
 
         /// <summary>
-        /// Advances from the reveal to the next round, or ends the match if all rounds
-        /// have been played. Valid only during Reveal. Returns false otherwise.
+        /// Advances from the reveal to the next round, or ends the match once a player
+        /// has reached the target score. Valid only during Reveal; false otherwise.
         /// </summary>
         public bool NextRound()
         {
             if (Phase != MatchPhase.Reveal) return false;
 
-            if (RoundNumber >= TotalRounds)
+            if (HasWinner)
             {
                 Phase = MatchPhase.Finished;
                 StateChanged?.Invoke();

@@ -151,7 +151,6 @@ MonoBehaviour:
   hudPrefab: {fileID: 1741487761080831525, guid: a21d481eb9acaf245bf6b2933f644694, type: 3}
   session: {fileID: 1942437714}
   match: {fileID: 1887838805}
-  matchView: {fileID: 1672300260}
   board: {fileID: 522753105}
 --- !u!4 &446274085
 Transform:
@@ -295,8 +294,12 @@ MonoBehaviour:
   cellSize: 28
   spacing: 2
   cellSprite: {fileID: 0}
+  cellMaterial: {fileID: 0}
   canvas: {fileID: 522753108}
-  screenPadding: 40
+  marginTop: 90
+  marginRight: 380
+  marginBottom: 120
+  marginLeft: 40
 --- !u!114 &522753106
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -326,10 +329,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_UiScaleMode: 0
-  m_ReferencePixelsPerUnit: 100
+  m_UiScaleMode: 1
+  m_ReferencePixelsPerUnit: 1
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1600, y: 900}
   m_ScreenMatchMode: 0
   m_MatchWidthOrHeight: 0
   m_PhysicalUnit: 3
@@ -355,7 +358,7 @@ Canvas:
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
   m_VertexColorAlwaysGammaSpace: 0
-  m_AdditionalShaderChannelsFlag: 0
+  m_AdditionalShaderChannelsFlag: 25
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
   m_SortingOrder: 0

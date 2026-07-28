@@ -15,7 +15,7 @@ namespace HuesNCues.Net
     [System.Serializable]
     public class MatchSnapshot
     {
-        public int totalRounds;
+        public int targetScore;
         public int roundNumber;
         public int phase;
         public int targetCol;
@@ -27,6 +27,7 @@ namespace HuesNCues.Net
         public string[] playerIds;
         public string[] playerNames;
         public int[] playerScores;
+        public int[] playerColors;
 
         public string[] g1Ids;
         public int[] g1Cols;
@@ -40,7 +41,7 @@ namespace HuesNCues.Net
             var players = m.Players;
             var snap = new MatchSnapshot
             {
-                totalRounds = m.TotalRounds,
+                targetScore = m.TargetScore,
                 roundNumber = m.RoundNumber,
                 phase = (int)m.Phase,
                 targetCol = m.Target.Column,
@@ -50,6 +51,7 @@ namespace HuesNCues.Net
                 playerIds = players.Select(p => p.Id).ToArray(),
                 playerNames = players.Select(p => p.Name).ToArray(),
                 playerScores = players.Select(p => p.Score).ToArray(),
+                playerColors = players.Select(p => p.ColorIndex).ToArray(),
                 cueMasterIndex = m.CueMaster == null ? -1 : IndexOf(players, m.CueMaster.Id),
             };
             CaptureGuesses(m.FirstGuesses, out snap.g1Ids, out snap.g1Cols, out snap.g1Rows);
@@ -87,7 +89,7 @@ namespace HuesNCues.Net
         private readonly Dictionary<string, GridCoordinate> _g2 = new Dictionary<string, GridCoordinate>();
         private int _cueIndex = -1;
 
-        public int TotalRounds { get; private set; }
+        public int TargetScore { get; private set; }
         public int RoundNumber { get; private set; }
         public MatchPhase Phase { get; private set; } = MatchPhase.NotStarted;
         public GridCoordinate Target { get; private set; }
@@ -102,7 +104,7 @@ namespace HuesNCues.Net
 
         public void Apply(MatchSnapshot s)
         {
-            TotalRounds = s.totalRounds;
+            TargetScore = s.targetScore;
             RoundNumber = s.roundNumber;
             Phase = (MatchPhase)s.phase;
             Target = new GridCoordinate(s.targetCol, s.targetRow);
@@ -113,7 +115,10 @@ namespace HuesNCues.Net
             _players.Clear();
             int count = s.playerIds != null ? s.playerIds.Length : 0;
             for (int i = 0; i < count; i++)
-                _players.Add(new Player(s.playerIds[i], s.playerNames[i]) { Score = s.playerScores[i] });
+            {
+                int colorIndex = (s.playerColors != null && i < s.playerColors.Length) ? s.playerColors[i] : 0;
+                _players.Add(new Player(s.playerIds[i], s.playerNames[i], colorIndex) { Score = s.playerScores[i] });
+            }
 
             Fill(_g1, s.g1Ids, s.g1Cols, s.g1Rows);
             Fill(_g2, s.g2Ids, s.g2Cols, s.g2Rows);

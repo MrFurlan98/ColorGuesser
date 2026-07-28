@@ -9,7 +9,8 @@ namespace HuesNCues.Core
     /// </summary>
     public interface IReadOnlyMatch
     {
-        int TotalRounds { get; }
+        /// <summary>Points needed to win. Rounds continue until somebody reaches it.</summary>
+        int TargetScore { get; }
         int RoundNumber { get; }
         MatchPhase Phase { get; }
         GridCoordinate Target { get; }
