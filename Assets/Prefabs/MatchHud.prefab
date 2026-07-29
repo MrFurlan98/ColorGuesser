@@ -11823,6 +11823,7 @@ MonoBehaviour:
   scoreboardText: {fileID: 0}
   boardContainer: {fileID: 6044951697059876920}
   gameplayRoot: {fileID: 154531774990555244}
+  finalScreenRoot: {fileID: 8376443186499160783}
 --- !u!222 &8160266473599721801
 CanvasRenderer:
   m_ObjectHideFlags: 0
