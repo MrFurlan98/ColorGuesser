@@ -27,6 +27,14 @@ namespace HuesNCues.Core
         private readonly Dictionary<string, GridCoordinate> _guess1 = new Dictionary<string, GridCoordinate>();
         private readonly Dictionary<string, GridCoordinate> _guess2 = new Dictionary<string, GridCoordinate>();
 
+        // Points each player earned in the round just revealed (not the running total).
+        private readonly Dictionary<string, int> _roundScores = new Dictionary<string, int>();
+
+        // One entry per finished round, for the end-of-match stats.
+        private readonly List<RoundRecord> _history = new List<RoundRecord>();
+        private DateTime _startedAtUtc;
+        private DateTime? _finishedAtUtc;
+
         public IReadOnlyList<Player> Players => _players;
 
         /// <summary>Points needed to win; rounds continue until a player reaches it.</summary>
@@ -39,6 +47,12 @@ namespace HuesNCues.Core
 
         public IReadOnlyDictionary<string, GridCoordinate> FirstGuesses => _guess1;
         public IReadOnlyDictionary<string, GridCoordinate> SecondGuesses => _guess2;
+        public IReadOnlyDictionary<string, int> RoundScores => _roundScores;
+        public IReadOnlyList<RoundRecord> History => _history;
+
+        /// <summary>How long the match has been running (frozen once it finishes).</summary>
+        public float ElapsedSeconds =>
+            (float)((_finishedAtUtc ?? DateTime.UtcNow) - _startedAtUtc).TotalSeconds;
 
         /// <summary>Raised after any state change, so a view can refresh itself.</summary>
         public event Action StateChanged;
@@ -66,6 +80,9 @@ namespace HuesNCues.Core
         public void StartMatch()
         {
             RoundNumber = 0;
+            _history.Clear();
+            _startedAtUtc = DateTime.UtcNow;
+            _finishedAtUtc = null;
             BeginRound();
         }
 
@@ -74,6 +91,7 @@ namespace HuesNCues.Core
             RoundNumber++;
             _guess1.Clear();
             _guess2.Clear();
+            _roundScores.Clear(); // last round's points must not leak into this one
             Clue1 = Clue2 = null;
             Target = new GridCoordinate(_rng.Next(ColorBoard.Columns), _rng.Next(ColorBoard.Rows));
             Phase = MatchPhase.CueMasterClue1;
@@ -127,29 +145,44 @@ namespace HuesNCues.Core
         }
 
         /// <summary>
-        /// Ends the current guessing phase early (the guess timer ran out). Players who
-        /// did not lock a guess simply score nothing for that cube. Valid only during a
-        /// guessing phase; returns false otherwise.
+        /// Ends the current timed phase early (the round timer ran out) and moves to the
+        /// next one. A cue master who did not type a clue simply leaves it empty; a
+        /// player who did not lock a guess scores nothing for that cube. Valid during
+        /// the clue and guessing phases; returns false otherwise.
         /// </summary>
-        public bool ForceEndGuessing()
+        public bool ForceAdvancePhase()
         {
-            if (Phase == MatchPhase.Guessing1)
+            switch (Phase)
             {
-                Phase = MatchPhase.CueMasterClue2;
-                StateChanged?.Invoke();
-                return true;
+                case MatchPhase.CueMasterClue1:
+                    Phase = MatchPhase.Guessing1;
+                    break;
+                case MatchPhase.Guessing1:
+                    Phase = MatchPhase.CueMasterClue2;
+                    break;
+                case MatchPhase.CueMasterClue2:
+                    Phase = MatchPhase.Guessing2;
+                    break;
+                case MatchPhase.Guessing2:
+                    RevealAndScore();
+                    break;
+                default:
+                    return false;
             }
-            if (Phase == MatchPhase.Guessing2)
-            {
-                RevealAndScore();
-                StateChanged?.Invoke();
-                return true;
-            }
-            return false;
+
+            StateChanged?.Invoke();
+            return true;
         }
+
+        /// <summary>True while the round is in a phase the timer applies to.</summary>
+        public static bool IsTimedPhase(MatchPhase phase) =>
+            phase == MatchPhase.CueMasterClue1 || phase == MatchPhase.Guessing1 ||
+            phase == MatchPhase.CueMasterClue2 || phase == MatchPhase.Guessing2;
 
         private void RevealAndScore()
         {
+            _roundScores.Clear();
+
             // Each guesser scores both of their cubes by proximity to the target.
             foreach (var guesser in Guessers)
             {
@@ -157,11 +190,32 @@ namespace HuesNCues.Core
                 if (_guess1.TryGetValue(guesser.Id, out var g1)) points += ScoringService.PointsForGuess(Target, g1);
                 if (_guess2.TryGetValue(guesser.Id, out var g2)) points += ScoringService.PointsForGuess(Target, g2);
                 guesser.Score += points;
+                _roundScores[guesser.Id] = points;
             }
 
             // The cue master scores for every cube that landed in the scoring rings.
             var allCubes = _guess1.Values.Concat(_guess2.Values);
-            CueMaster.Score += ScoringService.PointsForCueGiver(Target, allCubes);
+            int cuePoints = ScoringService.PointsForCueGiver(Target, allCubes);
+            CueMaster.Score += cuePoints;
+            _roundScores[CueMaster.Id] = cuePoints;
+
+            // Keep the round for the end-of-match stats.
+            int exact = 0;
+            foreach (var cube in _guess1.Values.Concat(_guess2.Values))
+                if (Target.DistanceTo(cube) == 0) exact++;
+
+            int total = 0;
+            foreach (var points in _roundScores.Values) total += points;
+
+            _history.Add(new RoundRecord
+            {
+                RoundNumber = RoundNumber,
+                Clue1 = Clue1,
+                Clue2 = Clue2,
+                Target = Target,
+                TotalPoints = total,
+                ExactGuesses = exact,
+            });
 
             Phase = MatchPhase.Reveal;
         }
@@ -177,6 +231,7 @@ namespace HuesNCues.Core
             if (HasWinner)
             {
                 Phase = MatchPhase.Finished;
+                _finishedAtUtc = DateTime.UtcNow; // freezes ElapsedSeconds
                 StateChanged?.Invoke();
                 return true;
             }

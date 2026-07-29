@@ -26,7 +26,14 @@ namespace HuesNCues.Core
         // single "local" player, and it always controls match flow.
         public string LocalPlayerId => null;
         public bool IsHost => true;
-        public float GuessSecondsLeft => 0f; // hotseat games are untimed
+        // Hotseat games are untimed and have a single screen, so there is nobody to
+        // wait for: voting advances the round immediately.
+        public float PhaseSecondsLeft => 0f;
+        public float PhaseSecondsTotal => 0f;
+        public int NextRoundVotes => 0;
+        public int NextRoundVotesNeeded => 0;
+        public float NextRoundSecondsLeft => 0f;
+        public void VoteNextRound() => _match.NextRound();
 
         public LocalMatchSession(IEnumerable<Player> players, ColorBoard board, int targetScore, Random rng = null)
         {

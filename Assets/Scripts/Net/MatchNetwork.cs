@@ -29,6 +29,9 @@ namespace HuesNCues.Net
     {
         [SerializeField] private BoardView board;
         [SerializeField] private MatchView matchView;
+
+        [Tooltip("Used to leave the room when the player asks to return to the menu.")]
+        [SerializeField] private SessionBootstrap session;
         [Tooltip("Fallback settings; the host overrides these from the lobby dropdowns.")]
         [SerializeField] private LobbySettings defaultSettings = new LobbySettings();
 
@@ -45,9 +48,16 @@ namespace HuesNCues.Net
             ready = new bool[0], hostId = -1,
         };
 
+        [Tooltip("Seconds the reveal waits before moving on by itself.")]
+        [SerializeField] private float revealSeconds = 15f;
+
         private LobbySettings _settings;      // host-chosen; mirrored to clients via the roster
         private float _guessDeadline = -1f;   // local countdown for the current guessing phase
         private MatchPhase _lastPhase = MatchPhase.NotStarted;
+
+        private readonly HashSet<ulong> _nextVotes = new HashSet<ulong>(); // server: ready for next round
+        private float _revealDeadline = -1f;
+        private int _votes;                   // mirrored to clients for the "2/4" display
 
         public IReadOnlyMatch Match =>
             IsServer ? (_serverMatch != null ? (IReadOnlyMatch)_serverMatch : _emptyMatch) : _clientMatch;
@@ -120,15 +130,59 @@ namespace HuesNCues.Net
             BroadcastLobby();
         }
 
-        /// <summary>Seconds left in the current guessing phase (0 when untimed).</summary>
-        public float GuessSecondsLeft =>
+        /// <summary>Seconds left in the current timed phase (0 when untimed).</summary>
+        public float PhaseSecondsLeft =>
             _guessDeadline < 0f ? 0f : Mathf.Max(0f, _guessDeadline - Time.time);
+
+        /// <summary>Length of a timed phase, for the progress bar (0 when untimed).</summary>
+        public float PhaseSecondsTotal =>
+            _guessDeadline < 0f ? 0f : Mathf.Max(0, Settings != null ? Settings.guessSeconds : 0);
 
         /// <summary>Marks this client ready / not ready (ignored for the host).</summary>
         public void SetLocalReady(bool ready) => SetReadyRpc(ready);
 
+        // ----- Reveal: everyone votes to move on -------------------------------------
+
+        public int NextRoundVotes => _votes;
+        public int NextRoundVotesNeeded =>
+            NetworkManager != null ? NetworkManager.ConnectedClientsIds.Count : 0;
+
+        public float NextRoundSecondsLeft =>
+            _revealDeadline < 0f ? 0f : Mathf.Max(0f, _revealDeadline - Time.time);
+
+        public void VoteNextRound() => VoteNextRoundRpc();
+
+        [Rpc(SendTo.Server)]
+        private void VoteNextRoundRpc(RpcParams rpcParams = default)
+        {
+            if (_serverMatch == null || _serverMatch.Phase != MatchPhase.Reveal) return;
+
+            _nextVotes.Add(rpcParams.Receive.SenderClientId);
+            SyncVotesRpc(_nextVotes.Count);
+            _votes = _nextVotes.Count;
+
+            if (_nextVotes.Count >= NetworkManager.ConnectedClientsIds.Count) AdvanceFromReveal();
+        }
+
+        [Rpc(SendTo.NotServer)]
+        private void SyncVotesRpc(int votes)
+        {
+            _votes = votes;
+            StateChanged?.Invoke();
+        }
+
+        private void AdvanceFromReveal()
+        {
+            _nextVotes.Clear();
+            _votes = 0;
+            _revealDeadline = -1f;
+            SyncVotesRpc(0);
+            _serverMatch.NextRound();
+        }
+
         /// <summary>
-        /// Drives the guess timer. Every peer tracks its own countdown for display, but
+        /// Drives the round timer. It applies equally to the clue and guessing phases,
+        /// restarting on each one. Every peer tracks its own countdown for display, but
         /// only the server actually ends the phase, so the host stays authoritative.
         /// </summary>
         private void Update()
@@ -136,20 +190,36 @@ namespace HuesNCues.Net
             if (!IsSpawned) return;
 
             var phase = Match.Phase;
-            bool guessing = phase == MatchPhase.Guessing1 || phase == MatchPhase.Guessing2;
+            bool timed = MatchController.IsTimedPhase(phase);
             int limit = Settings != null ? Settings.guessSeconds : 0;
 
             if (phase != _lastPhase)
             {
                 _lastPhase = phase;
-                _guessDeadline = (guessing && limit > 0) ? Time.time + limit : -1f;
+                _guessDeadline = (timed && limit > 0) ? Time.time + limit : -1f;
+
+                // Entering the reveal starts the "everyone ready" window; leaving clears it.
+                _revealDeadline = phase == MatchPhase.Reveal && revealSeconds > 0f
+                    ? Time.time + revealSeconds : -1f;
+                if (phase != MatchPhase.Reveal && IsServer) { _nextVotes.Clear(); _votes = 0; }
             }
 
-            if (!guessing || _guessDeadline < 0f) return;
+            // The reveal moves on by itself once its window expires.
+            if (phase == MatchPhase.Reveal)
+            {
+                if (_revealDeadline >= 0f && Time.time >= _revealDeadline)
+                {
+                    _revealDeadline = -1f;
+                    if (IsServer && _serverMatch != null) AdvanceFromReveal();
+                }
+                return;
+            }
+
+            if (!timed || _guessDeadline < 0f) return;
             if (Time.time < _guessDeadline) return;
 
             _guessDeadline = -1f;
-            if (IsServer && _serverMatch != null) _serverMatch.ForceEndGuessing();
+            if (IsServer && _serverMatch != null) _serverMatch.ForceAdvancePhase();
         }
 
         [Rpc(SendTo.Server)]
@@ -173,6 +243,7 @@ namespace HuesNCues.Net
                 NetworkManager.OnClientDisconnectCallback += OnClientDisconnected;
             }
             matchView.Bind(this); // UI switches from its offline session to this one
+            matchView.LeaveRequested += OnLeaveRequested;
 
             // Tell the host my chosen nickname + colour (picked in the menu).
             string myName = PlayerPrefs.GetString(SessionBootstrap.NicknameKey, "Player");
@@ -180,8 +251,14 @@ namespace HuesNCues.Net
             SetProfileRpc(Encoding.UTF8.GetBytes(myName), myColor);
         }
 
+        private void OnLeaveRequested()
+        {
+            if (session != null) session.Leave();
+        }
+
         public override void OnNetworkDespawn()
         {
+            if (matchView != null) matchView.LeaveRequested -= OnLeaveRequested;
             if (_serverMatch != null) _serverMatch.StateChanged -= OnServerMatchChanged;
             if (NetworkManager != null)
             {
@@ -211,23 +288,44 @@ namespace HuesNCues.Net
             if (!IsServer) return;
             if (rpcParams.Receive.SenderClientId != NetworkManager.LocalClientId) return; // host only
 
+            // "Jogar novamente" sends everyone back to the lobby rather than straight
+            // into a new match, so players can ready up (and change colours) again.
+            ReturnToLobby();
+        }
+
+        /// <summary>
+        /// Ends the current match and puts everyone back in the lobby, with every
+        /// non-host player marked not ready again.
+        /// </summary>
+        private void ReturnToLobby()
+        {
+            if (!IsServer) return;
+
             if (_serverMatch != null)
             {
                 _serverMatch.StateChanged -= OnServerMatchChanged;
                 _serverMatch = null;
             }
 
-            StartMatchServer(); // rebuild from the currently connected clients
-            if (_serverMatch == null) // not enough players to restart -> back to waiting
-            {
-                StateChanged?.Invoke();
-                SnapshotRpc(MatchSnapshot.Capture(_emptyMatch).ToBytes());
-            }
+            _nextVotes.Clear();
+            _votes = 0;
+            _revealDeadline = -1f;
+            _ready.Clear();            // everyone has to say they are ready again
+
+            BroadcastLobby();
+            StateChanged?.Invoke();                                    // host UI -> lobby
+            SnapshotRpc(MatchSnapshot.Capture(_emptyMatch).ToBytes()); // clients -> lobby
         }
 
         private void StartMatchServer()
         {
             if (!IsServer || _serverMatch != null) return;
+
+            // Drop anything left over from the previous match so a rematch starts clean.
+            _nextVotes.Clear();
+            _votes = 0;
+            _revealDeadline = -1f;
+            SyncVotesRpc(0);
 
             var players = NetworkManager.ConnectedClientsIds
                 .Select((id, i) => new Player(id.ToString(), NameFor(id, i), ColorFor(id)))
@@ -279,12 +377,9 @@ namespace HuesNCues.Net
 
             if (_serverMatch == null) return;
 
-            // A player left mid-match. MatchController can't drop a player, so we abort
-            // back to "waiting" rather than let the game stall on the missing player.
-            _serverMatch.StateChanged -= OnServerMatchChanged;
-            _serverMatch = null;
-            StateChanged?.Invoke();                                       // host UI -> waiting
-            SnapshotRpc(MatchSnapshot.Capture(_emptyMatch).ToBytes());    // clients -> waiting
+            // A player left mid-match. MatchController can't drop a player, so we send
+            // everyone back to the lobby rather than stall on the missing player.
+            ReturnToLobby();
         }
 
         [Rpc(SendTo.Server)]

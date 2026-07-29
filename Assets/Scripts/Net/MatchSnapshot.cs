@@ -28,6 +28,7 @@ namespace HuesNCues.Net
         public string[] playerNames;
         public int[] playerScores;
         public int[] playerColors;
+        public int[] playerRoundScores; // points earned in the round just revealed
 
         public string[] g1Ids;
         public int[] g1Cols;
@@ -35,6 +36,16 @@ namespace HuesNCues.Net
         public string[] g2Ids;
         public int[] g2Cols;
         public int[] g2Rows;
+
+        // Finished-round history, for the end-of-match stats.
+        public int[] hRound;
+        public string[] hClue1;
+        public string[] hClue2;
+        public int[] hTargetCol;
+        public int[] hTargetRow;
+        public int[] hPoints;
+        public int[] hExact;
+        public float elapsedSeconds;
 
         public static MatchSnapshot Capture(IReadOnlyMatch m)
         {
@@ -52,10 +63,22 @@ namespace HuesNCues.Net
                 playerNames = players.Select(p => p.Name).ToArray(),
                 playerScores = players.Select(p => p.Score).ToArray(),
                 playerColors = players.Select(p => p.ColorIndex).ToArray(),
+                playerRoundScores = players
+                    .Select(p => m.RoundScores.TryGetValue(p.Id, out var s) ? s : 0).ToArray(),
                 cueMasterIndex = m.CueMaster == null ? -1 : IndexOf(players, m.CueMaster.Id),
             };
             CaptureGuesses(m.FirstGuesses, out snap.g1Ids, out snap.g1Cols, out snap.g1Rows);
             CaptureGuesses(m.SecondGuesses, out snap.g2Ids, out snap.g2Cols, out snap.g2Rows);
+
+            var history = m.History;
+            snap.elapsedSeconds = m.ElapsedSeconds;
+            snap.hRound = history.Select(r => r.RoundNumber).ToArray();
+            snap.hClue1 = history.Select(r => r.Clue1 ?? "").ToArray();
+            snap.hClue2 = history.Select(r => r.Clue2 ?? "").ToArray();
+            snap.hTargetCol = history.Select(r => r.Target.Column).ToArray();
+            snap.hTargetRow = history.Select(r => r.Target.Row).ToArray();
+            snap.hPoints = history.Select(r => r.TotalPoints).ToArray();
+            snap.hExact = history.Select(r => r.ExactGuesses).ToArray();
             return snap;
         }
 
@@ -87,6 +110,8 @@ namespace HuesNCues.Net
         private readonly List<Player> _players = new List<Player>();
         private readonly Dictionary<string, GridCoordinate> _g1 = new Dictionary<string, GridCoordinate>();
         private readonly Dictionary<string, GridCoordinate> _g2 = new Dictionary<string, GridCoordinate>();
+        private readonly Dictionary<string, int> _roundScores = new Dictionary<string, int>();
+        private readonly List<RoundRecord> _history = new List<RoundRecord>();
         private int _cueIndex = -1;
 
         public int TargetScore { get; private set; }
@@ -101,6 +126,9 @@ namespace HuesNCues.Net
         public IEnumerable<Player> Guessers => _players.Where(p => p != CueMaster);
         public IReadOnlyDictionary<string, GridCoordinate> FirstGuesses => _g1;
         public IReadOnlyDictionary<string, GridCoordinate> SecondGuesses => _g2;
+        public IReadOnlyDictionary<string, int> RoundScores => _roundScores;
+        public IReadOnlyList<RoundRecord> History => _history;
+        public float ElapsedSeconds { get; private set; }
 
         public void Apply(MatchSnapshot s)
         {
@@ -113,15 +141,32 @@ namespace HuesNCues.Net
             _cueIndex = s.cueMasterIndex;
 
             _players.Clear();
+            _roundScores.Clear();
             int count = s.playerIds != null ? s.playerIds.Length : 0;
             for (int i = 0; i < count; i++)
             {
                 int colorIndex = (s.playerColors != null && i < s.playerColors.Length) ? s.playerColors[i] : 0;
                 _players.Add(new Player(s.playerIds[i], s.playerNames[i], colorIndex) { Score = s.playerScores[i] });
+                if (s.playerRoundScores != null && i < s.playerRoundScores.Length)
+                    _roundScores[s.playerIds[i]] = s.playerRoundScores[i];
             }
 
             Fill(_g1, s.g1Ids, s.g1Cols, s.g1Rows);
             Fill(_g2, s.g2Ids, s.g2Cols, s.g2Rows);
+
+            ElapsedSeconds = s.elapsedSeconds;
+            _history.Clear();
+            int rounds = s.hRound != null ? s.hRound.Length : 0;
+            for (int i = 0; i < rounds; i++)
+                _history.Add(new RoundRecord
+                {
+                    RoundNumber = s.hRound[i],
+                    Clue1 = s.hClue1[i],
+                    Clue2 = s.hClue2[i],
+                    Target = new GridCoordinate(s.hTargetCol[i], s.hTargetRow[i]),
+                    TotalPoints = s.hPoints[i],
+                    ExactGuesses = s.hExact[i],
+                });
         }
 
         private static void Fill(Dictionary<string, GridCoordinate> dict, string[] ids, int[] cols, int[] rows)

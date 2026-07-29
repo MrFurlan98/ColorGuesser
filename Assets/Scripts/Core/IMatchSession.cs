@@ -30,16 +30,33 @@ namespace HuesNCues.Core
         /// Used to gate host-only actions like Next Round / Play Again.</summary>
         bool IsHost { get; }
 
-        /// <summary>Seconds left in the current guessing phase, or 0 when there is no
-        /// timer (offline games, or the host chose "no limit").</summary>
-        float GuessSecondsLeft { get; }
+        /// <summary>Seconds left in the current timed phase (clue or guessing), or 0 when
+        /// there is no timer (offline games, or the host chose "no limit").</summary>
+        float PhaseSecondsLeft { get; }
+
+        /// <summary>How long the timed phase lasts in total, for progress bars. 0 = untimed.</summary>
+        float PhaseSecondsTotal { get; }
+
+        /// <summary>
+        /// Says this player is ready to leave the reveal. The round advances once every
+        /// player has said so (or the reveal timer runs out).
+        /// </summary>
+        void VoteNextRound();
+
+        /// <summary>How many players are ready to move on, and how many are needed.</summary>
+        int NextRoundVotes { get; }
+        int NextRoundVotesNeeded { get; }
+
+        /// <summary>Seconds before the reveal auto-advances (0 when not counting down).</summary>
+        float NextRoundSecondsLeft { get; }
 
         void Start();
         void Send(IMatchCommand command);
 
         /// <summary>
-        /// Starts a fresh match with the same participants (scores reset). Offline this
-        /// rebuilds the local match; online the host rebuilds it for everyone.
+        /// Play again. Offline this rebuilds the local match straight away; online the
+        /// host sends everyone back to the lobby (scores cleared, players not ready) so
+        /// they can ready up and change colours before the next match.
         /// </summary>
         void RequestRestart();
     }

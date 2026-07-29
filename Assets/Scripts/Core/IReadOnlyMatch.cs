@@ -23,5 +23,14 @@ namespace HuesNCues.Core
 
         IReadOnlyDictionary<string, GridCoordinate> FirstGuesses { get; }
         IReadOnlyDictionary<string, GridCoordinate> SecondGuesses { get; }
+
+        /// <summary>Points each player earned in the round just revealed (not the total).</summary>
+        IReadOnlyDictionary<string, int> RoundScores { get; }
+
+        /// <summary>One entry per finished round, for the end-of-match stats.</summary>
+        IReadOnlyList<RoundRecord> History { get; }
+
+        /// <summary>How long the match has been running (frozen once it finishes).</summary>
+        float ElapsedSeconds { get; }
     }
 }

@@ -33,12 +33,27 @@ namespace HuesNCues.Game
         [Tooltip("Gap between cells in UI pixels.")]
         [SerializeField] private float spacing = 2f;
 
-        [Tooltip("Optional sprite used for every cell (e.g. rounded/bordered). Empty = solid square.")]
+        [Tooltip("Prefab used for each of the 480 cells. Leave empty for a plain Image. " +
+                 "Keep it light — it is instantiated 480 times.")]
+        [SerializeField] private BoardCellView cellPrefab;
+
+        [Tooltip("Prefab used for the row/column labels. Leave empty for plain text.")]
+        [SerializeField] private TextMeshProUGUI labelPrefab;
+
+        [Tooltip("Sprite applied to cells when no cell prefab is set. Empty = solid square.")]
         [SerializeField] private Sprite cellSprite;
 
         [Tooltip("Optional material for every cell (Shader Graph must use the Canvas target, " +
                  "and multiply by Vertex Color to keep each cell's own color).")]
         [SerializeField] private Material cellMaterial;
+
+        [Header("Row / column labels (1-30 across, A-P down)")]
+        [SerializeField] private bool showLabels = true;
+
+        [Tooltip("Space reserved around the grid for the labels, in UI pixels.")]
+        [SerializeField] private float labelGutter = 26f;
+
+        [SerializeField] private Color labelColor = Color.white;
 
         [Tooltip("Optional. Board is drawn under this Canvas; if left empty, one is created.")]
         [SerializeField] private Canvas canvas;
@@ -53,13 +68,16 @@ namespace HuesNCues.Game
         [SerializeField] private float marginLeft = 40f;
 
         private ColorBoard _board;              // loaded from Resources/BoardData.csv
-        private Image[] _cells;                 // indexed by row * Columns + col
+        private BoardCellView[] _cells;         // indexed by row * Columns + col
         private RectTransform _boardArea;       // fills the canvas; the board is fitted inside it
         private RectTransform _boardPanel;      // fixed design-size grid, scaled to fit _boardArea
         private readonly List<GameObject> _markers = new List<GameObject>();
         private GridCoordinate? _highlighted;   // cell popped during the reveal
 
         private float Step => cellSize + spacing;
+
+        /// <summary>Space reserved around the grid for labels (0 when labels are off).</summary>
+        private float Gutter => showLabels ? labelGutter : 0f;
 
         /// <summary>Raised when a valid board cell is clicked.</summary>
         public event Action<GridCoordinate> CellClicked;
@@ -82,6 +100,13 @@ namespace HuesNCues.Game
         /// <summary>Spawns a marker prefab centered on a cell, tinted and labelled.</summary>
         public GameObject PlaceMarker(GameObject prefab, GridCoordinate coord, Color color, string label)
         {
+            var go = SpawnMarker(prefab, coord, color, label);
+            if (go != null) _markers.Add(go);
+            return go;
+        }
+
+        private GameObject SpawnMarker(GameObject prefab, GridCoordinate coord, Color color, string label)
+        {
             if (prefab == null || _boardPanel == null) return null;
 
             var go = Instantiate(prefab);
@@ -97,8 +122,6 @@ namespace HuesNCues.Game
             if (img != null) img.color = color;
             var tmp = go.GetComponentInChildren<TextMeshProUGUI>();
             if (tmp != null) tmp.text = label;
-
-            _markers.Add(go);
             return go;
         }
 
@@ -116,7 +139,9 @@ namespace HuesNCues.Game
             ClearTargetHighlight();
             if (_cells == null || !_board.Contains(coord)) return;
 
-            var rt = _cells[Index(coord)].rectTransform;
+            var cell = _cells[Index(coord)];
+            cell.SetHighlighted(true);
+            var rt = (RectTransform)cell.transform;
             rt.localScale = Vector3.one * 1.4f;
             rt.SetAsLastSibling();
             // Keep the markers on top of the enlarged target.
@@ -129,8 +154,29 @@ namespace HuesNCues.Game
         public void ClearTargetHighlight()
         {
             if (_highlighted.HasValue && _cells != null)
-                _cells[Index(_highlighted.Value)].rectTransform.localScale = Vector3.one;
+            {
+                var cell = _cells[Index(_highlighted.Value)];
+                cell.SetHighlighted(false);
+                ((RectTransform)cell.transform).localScale = Vector3.one;
+            }
             _highlighted = null;
+        }
+
+        /// <summary>
+        /// Moves the board into a container supplied by the UI (e.g. a RectTransform on
+        /// the MatchHud prefab), so the layout is authored in the prefab instead of by
+        /// the margins below. The board stretches to fill it and re-fits on resize.
+        /// </summary>
+        public void SetBoardContainer(RectTransform container)
+        {
+            if (container == null || _boardArea == null) return;
+
+            _boardArea.SetParent(container, false);
+            _boardArea.anchorMin = Vector2.zero;
+            _boardArea.anchorMax = Vector2.one;
+            _boardArea.offsetMin = Vector2.zero;
+            _boardArea.offsetMax = Vector2.zero;
+            FitBoard();
         }
 
         /// <summary>Shows/hides the whole board (hidden on the menu/lobby, shown in a match).</summary>
@@ -206,7 +252,8 @@ namespace HuesNCues.Game
             _boardPanel.SetParent(_boardArea, false);
             _boardPanel.anchorMin = _boardPanel.anchorMax = new Vector2(0.5f, 0.5f);
             _boardPanel.pivot = new Vector2(0.5f, 0.5f);
-            _boardPanel.sizeDelta = new Vector2(totalW, totalH);
+            // The panel includes a gutter on every side for the row/column labels.
+            _boardPanel.sizeDelta = new Vector2(totalW + 2f * Gutter, totalH + 2f * Gutter);
 
             var panelImage = panelGO.GetComponent<Image>();
             panelImage.color = new Color(0f, 0f, 0f, 0f); // invisible, but still catches raycasts
@@ -214,29 +261,104 @@ namespace HuesNCues.Game
             panelGO.GetComponent<BoardClickReceiver>().Init(this);
 
             // The 480 cells.
-            _cells = new Image[_board.CellCount];
+            _cells = new BoardCellView[_board.CellCount];
             foreach (var coord in _board.AllCoordinates())
             {
-                var cellGO = new GameObject($"Cell_{coord.Label}", typeof(RectTransform), typeof(Image));
-                var rt = cellGO.GetComponent<RectTransform>();
-                rt.SetParent(_boardPanel, false);
+                var cell = CreateCell(coord);
+                var rt = (RectTransform)cell.transform;
                 rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
                 rt.pivot = new Vector2(0f, 1f);
                 rt.sizeDelta = new Vector2(cellSize, cellSize);
-                rt.anchoredPosition = new Vector2(coord.Column * Step, -coord.Row * Step);
+                rt.anchoredPosition = new Vector2(Gutter + coord.Column * Step, -(Gutter + coord.Row * Step));
 
-                var img = cellGO.GetComponent<Image>();
-                img.sprite = cellSprite;         // null = solid square; assign one to restyle all cells
-                img.type = Image.Type.Sliced;
-                img.color = _board.GetColor(coord);
-                img.raycastTarget = false; // the key optimization
-                // One shared material across all cells keeps uGUI batching intact.
-                if (cellMaterial != null) img.material = cellMaterial;
+                cell.SetColor(_board.GetColor(coord));
 
-                _cells[Index(coord)] = img;
+                var img = cell.ColorImage;
+                if (img != null)
+                {
+                    img.raycastTarget = false; // the key optimization
+                    // One shared material across all cells keeps uGUI batching intact.
+                    if (cellMaterial != null) img.material = cellMaterial;
+                }
+
+                _cells[Index(coord)] = cell;
             }
 
+            if (showLabels) BuildLabels(totalW, totalH);
             FitBoard();
+        }
+
+        /// <summary>
+        /// Column numbers (1-30) above and below the grid, row letters (A-P) to the left
+        /// and right - matching the printed board and the authored CSV. They live inside
+        /// the board panel, so they scale with it and never drift out of alignment.
+        /// </summary>
+        private void BuildLabels(float totalW, float totalH)
+        {
+            float fontSize = Mathf.Max(8f, cellSize * 0.55f);
+            float half = Gutter * 0.5f;
+
+            for (int col = 0; col < ColorBoard.Columns; col++)
+            {
+                float x = Gutter + col * Step + cellSize * 0.5f;
+                string text = (col + 1).ToString();
+                MakeLabel(text, new Vector2(x, -half), fontSize);                        // top
+                MakeLabel(text, new Vector2(x, -(Gutter + totalH + half)), fontSize);    // bottom
+            }
+
+            for (int row = 0; row < ColorBoard.Rows; row++)
+            {
+                float y = -(Gutter + row * Step + cellSize * 0.5f);
+                string text = ((char)('A' + row)).ToString();
+                MakeLabel(text, new Vector2(half, y), fontSize);                          // left
+                MakeLabel(text, new Vector2(Gutter + totalW + half, y), fontSize);        // right
+            }
+        }
+
+        /// <summary>Creates a cell from the prefab, or a plain Image if none is set.</summary>
+        private BoardCellView CreateCell(GridCoordinate coord)
+        {
+            if (cellPrefab != null)
+            {
+                var instance = Instantiate(cellPrefab, _boardPanel);
+                instance.name = $"Cell_{coord.Label}";
+                return instance;
+            }
+
+            var go = new GameObject($"Cell_{coord.Label}", typeof(RectTransform), typeof(Image), typeof(BoardCellView));
+            go.transform.SetParent(_boardPanel, false);
+            var img = go.GetComponent<Image>();
+            img.sprite = cellSprite;   // null = solid square
+            img.type = Image.Type.Sliced;
+            return go.GetComponent<BoardCellView>();
+        }
+
+        private void MakeLabel(string text, Vector2 anchoredPosition, float fontSize)
+        {
+            TextMeshProUGUI label;
+            if (labelPrefab != null)
+            {
+                label = Instantiate(labelPrefab, _boardPanel);
+            }
+            else
+            {
+                var go = new GameObject("Label", typeof(RectTransform));
+                go.transform.SetParent(_boardPanel, false);
+                label = go.AddComponent<TextMeshProUGUI>();
+                label.fontSize = fontSize;
+                label.alignment = TextAlignmentOptions.Center;
+                label.color = labelColor;
+            }
+
+            label.name = $"Label_{text}";
+            label.text = text;
+            label.raycastTarget = false;
+
+            var rt = label.rectTransform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(Gutter * 1.6f, Gutter);
+            rt.anchoredPosition = anchoredPosition;
         }
 
         private void FitBoard()
@@ -261,8 +383,9 @@ namespace HuesNCues.Game
             RectTransformUtility.ScreenPointToLocalPointInRectangle(
                 _boardPanel, eventData.position, eventData.pressEventCamera, out Vector2 local);
 
-            float fromLeft = local.x + _boardPanel.rect.width * 0.5f;
-            float fromTop = _boardPanel.rect.height * 0.5f - local.y;
+            // Shift to the panel's top-left, then past the label gutter to the grid.
+            float fromLeft = local.x + _boardPanel.rect.width * 0.5f - Gutter;
+            float fromTop = _boardPanel.rect.height * 0.5f - local.y - Gutter;
 
             int col = Mathf.FloorToInt(fromLeft / Step);
             int row = Mathf.FloorToInt(fromTop / Step);
@@ -284,7 +407,8 @@ namespace HuesNCues.Game
         private static int Index(GridCoordinate c) => c.Row * ColorBoard.Columns + c.Column;
 
         private Vector2 CellCenter(GridCoordinate c) =>
-            new Vector2(c.Column * Step + cellSize * 0.5f, -(c.Row * Step + cellSize * 0.5f));
+            new Vector2(Gutter + c.Column * Step + cellSize * 0.5f,
+                        -(Gutter + c.Row * Step + cellSize * 0.5f));
     }
 
     /// <summary>

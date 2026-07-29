@@ -293,8 +293,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cellSize: 28
   spacing: 2
+  cellPrefab: {fileID: 0}
+  labelPrefab: {fileID: 0}
   cellSprite: {fileID: 0}
   cellMaterial: {fileID: 0}
+  showLabels: 1
+  labelGutter: 26
+  labelColor: {r: 1, g: 1, b: 1, a: 1}
   canvas: {fileID: 522753108}
   marginTop: 90
   marginRight: 380

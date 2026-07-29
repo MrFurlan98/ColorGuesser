@@ -44,7 +44,23 @@ namespace HuesNCues.Game
             // One status per state, so the label and its icon always agree.
             string label = isHost ? hostLabel : (isReady ? readyLabel : notReadyLabel);
             Color statusColor = isHost ? hostColor : (isReady ? readyColor : notReadyColor);
+            SetStatus(label, statusColor);
+        }
 
+        /// <summary>
+        /// Fills the card with an arbitrary status - lets the same prefab be reused
+        /// outside the lobby (e.g. "Palpitou" / "Escolhendo" during a round).
+        /// </summary>
+        public void Set(string playerName, int colorIndex, string status, Color statusColor)
+        {
+            if (nameText != null) nameText.text = playerName;
+            if (initialsText != null) initialsText.text = Initials(playerName);
+            if (colorImage != null) colorImage.color = PlayerPalette.Get(colorIndex);
+            SetStatus(status, statusColor);
+        }
+
+        private void SetStatus(string label, Color statusColor)
+        {
             if (statusText != null)
             {
                 statusText.text = label;
