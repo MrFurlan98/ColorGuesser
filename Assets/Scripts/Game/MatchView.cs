@@ -319,6 +319,7 @@ namespace HuesNCues.Game
                     Name = p.Name,
                     ColorIndex = p.ColorIndex,
                     RoundScore = match.RoundScores.TryGetValue(p.Id, out var s) ? s : 0,
+                    TotalScore = p.Score,
                 });
             _roundScores.Sort((a, b) => b.RoundScore.CompareTo(a.RoundScore)); // highest first
 

@@ -11,7 +11,12 @@ namespace HuesNCues.Game
     {
         public string Name;
         public int ColorIndex;
+
+        /// <summary>Points won in this round.</summary>
         public int RoundScore;
+
+        /// <summary>Running total after this round.</summary>
+        public int TotalScore;
     }
 
     /// <summary>
@@ -84,7 +89,7 @@ namespace HuesNCues.Game
                 if (!used) continue;
 
                 var s = scores[i];
-                _cards[i].Set(s.Name, s.ColorIndex, s.RoundScore);
+                _cards[i].Set(s.Name, s.ColorIndex, s.RoundScore, s.TotalScore);
             }
         }
     }

@@ -30,13 +30,6 @@ reproduces the original board's 480 colours **and their authored colour names**.
 *Options:* rename + own palette/colour names for the public build, or keep the deploy
 clearly academic/unlisted. Decide before the defence rather than be asked about it.
 
-### 3. Mixed-language UI
-The new panels are Portuguese ("PRONTO", "Faltam…", "FIM DA PARTIDA"), but
-`MatchView.BuildStatus` still returns **English** strings — "Round 3 · first to 25 ·
-Cue Master: … Type a 1-word clue", "Game over!", "Waiting for the host…". If the
-`statusText` field on `MatchHud` is still wired, both languages are on screen at once.
-Cheapest high-impact fix in this list.
-
 ---
 
 ## Medium priority
@@ -127,6 +120,18 @@ they are genuine delivered scope and should be written up:
    only touch the outside of the frame now earn the cue giver nothing.
 6. **3-player rule was missing** — the cue giver now scores **2 points per piece** in a
    3-player game, as the printed rules require.
+
+### Mixed-language cleanup (2026-07-29)
+10. **Mixed-language UI** — turned out the English strings were never visible:
+    `statusText` and `scoreboardText` were unassigned in the prefab (`fileID: 0`) and the
+    `StatusText` object had been deleted during the HUD rebuild. `BuildStatus`,
+    `BuildScoreboard` and `ResultText` (~84 lines) ran every refresh and threw the result
+    away. All removed, along with `SetStatus`/`SetScoreboard`. The UI is now entirely
+    Portuguese, from the prefab strings.
+11. **No running totals during a match** (found while doing the above) — with the dead
+    scoreboard gone, nothing showed cumulative scores until the match ended, which is a
+    problem when the win condition is "first to 25". The reveal score card now shows
+    **`+3 (12)`**: points won this round plus the running total.
 
 ### UI reuse pass (2026-07-28)
 7. **Board stayed visible on the final screen** — gameplay and final screens are now
