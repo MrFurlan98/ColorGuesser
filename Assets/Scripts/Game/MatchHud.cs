@@ -8,8 +8,8 @@ namespace HuesNCues.Game
 {
     /// <summary>
     /// Passive view (Humble Object / MVP pattern) for the match HUD, and the facade the
-    /// rest of the game talks to. It owns the clue controls and the scoreboard, and
-    /// forwards everything else to sub-views that sit on the matching prefab objects:
+    /// rest of the game talks to. It owns the clue controls, and forwards everything
+    /// else to sub-views that sit on the matching prefab objects:
     /// RoundTitlesView (Titles), PhaseStepsView (Phases), ClueView + RoundTimerView +
     /// RoleTitlesView (GameInfo), RolePanelsView, GuessPanelView, ColorDisplayView,
     /// ScorePanelView, FinalScorePanelView and StatsPanelView.
@@ -56,10 +56,8 @@ namespace HuesNCues.Game
         [SerializeField] private ColorDisplayView colorDisplay;
 
         [Header("Controls")]
-        [SerializeField] private TextMeshProUGUI statusText;
         [SerializeField] private TMP_InputField clueInput;
         [SerializeField] private Button submitButton;
-        [SerializeField] private TextMeshProUGUI scoreboardText;
 
         [Tooltip("Area the colour board is placed into. Leave empty to let BoardView " +
                  "position the board on the canvas itself.")]
@@ -110,8 +108,6 @@ namespace HuesNCues.Game
             set { if (clueInput != null) clueInput.text = value; }
         }
 
-        public void SetStatus(string text) { if (statusText != null) statusText.text = text; }
-        public void SetScoreboard(string text) { if (scoreboardText != null) scoreboardText.text = text; }
 
         /// <summary>
         /// Drives the shared colour display: the secret colour for the cue master, the

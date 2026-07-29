@@ -297,8 +297,6 @@ namespace HuesNCues.Game
 
             RefreshScorePanel(m, phase, decided);
             RefreshFinalScores(m, phase);
-            _hud.SetStatus(BuildStatus(m, phase, me, amCue));
-            _hud.SetScoreboard(BuildScoreboard(m));
         }
 
         /// <summary>
@@ -435,90 +433,6 @@ namespace HuesNCues.Game
         {
             var player = match.Players.FirstOrDefault(p => p.Id == playerId);
             board.PlaceMarker(markerPrefab, coord, ColorForPlayer(match, playerId), player != null ? Initial(player) : "?");
-        }
-
-        // ----- Status / scoreboard text ---------------------------------------------
-
-        private string BuildStatus(IReadOnlyMatch m, MatchPhase phase, string me, bool amCue)
-        {
-            int r = m.RoundNumber;
-            string tot = $"first to {m.TargetScore}";
-            string cue = m.CueMaster != null ? m.CueMaster.Name : "";
-
-            // Reveal / Finished: content is the same for everyone, but only the host
-            // is prompted to act (others wait).
-            if (phase == MatchPhase.Reveal)
-            {
-                bool last = m.Players.Any(p => p.Score >= m.TargetScore);
-                string action = _session.IsHost
-                    ? (last ? "press See Final Scores." : "press Next Round.")
-                    : "waiting for the host…";
-                return $"The color was \"{board.NameOf(m.Target)}\" ({m.Target.Label}).  Scores updated — {action}";
-            }
-            if (phase == MatchPhase.Finished)
-            {
-                string action = _session.IsHost ? "Press Play Again." : "Waiting for the host…";
-                return $"Game over! {ResultText(m)}  {action}";
-            }
-
-            if (me == null) // hotseat wording
-            {
-                string who = CurrentGuesser()?.Name ?? "";
-                switch (phase)
-                {
-                    case MatchPhase.CueMasterClue1: return $"Round {r} · {tot}  ·  Cue Master: {cue}  ·  Type a 1-word clue.";
-                    case MatchPhase.CueMasterClue2: return $"Round {r} · {tot}  ·  Cue Master: {cue}  ·  Type your 2nd clue word.";
-                    case MatchPhase.Guessing1: return $"Round {r} · {tot}  ·  Clue: \"{m.Clue1}\"  ·  {who}, click a cell.";
-                    case MatchPhase.Guessing2: return $"Round {r} · {tot}  ·  Clues: \"{m.Clue1}\" \"{m.Clue2}\"  ·  {who}, 2nd guess.";
-                    default: return "";
-                }
-            }
-
-            // Multiplayer wording (from this player's perspective).
-            bool clue1 = phase == MatchPhase.CueMasterClue1;
-            bool guessing = phase == MatchPhase.Guessing1 || phase == MatchPhase.Guessing2;
-            string clues = phase == MatchPhase.Guessing2 ? $"\"{m.Clue1}\" \"{m.Clue2}\"" : $"\"{m.Clue1}\"";
-
-            if (clue1 || phase == MatchPhase.CueMasterClue2)
-                return amCue
-                    ? $"Round {r} · {tot}  ·  You are the Cue Master. Type {(clue1 ? "a" : "your 2nd")} clue word."
-                    : $"Round {r} · {tot}  ·  Waiting for {cue} to give {(clue1 ? "a" : "the 2nd")} clue…";
-
-            if (guessing)
-            {
-                if (amCue) return $"Round {r} · {tot}  ·  Clue: {clues}  ·  Waiting for guesses…";
-                var dict = phase == MatchPhase.Guessing1 ? m.FirstGuesses : m.SecondGuesses;
-                return dict.ContainsKey(me)
-                    ? $"Round {r} · {tot}  ·  Clue: {clues}  ·  Waiting for other players…"
-                    : $"Round {r} · {tot}  ·  Clue: {clues}  ·  Your turn — click a cell!";
-            }
-
-            return "";
-        }
-
-        private static string BuildScoreboard(IReadOnlyMatch match)
-        {
-            var sb = new System.Text.StringBuilder("<b>SCORES</b>\n");
-            foreach (var p in match.Players.OrderByDescending(p => p.Score))
-            {
-                bool isCue = match.CueMaster != null && p.Id == match.CueMaster.Id;
-                // Tint each name with that player's marker colour (TMP rich text).
-                sb.AppendLine($"{(isCue ? "★ " : "   ")}<color=#{PlayerPalette.Hex(p.ColorIndex)}>{p.Name}</color>: {p.Score}");
-            }
-            return sb.ToString();
-        }
-
-        private static string ResultText(IReadOnlyMatch match)
-        {
-            var ordered = match.Players.OrderByDescending(p => p.Score).ToList();
-            if (ordered.Count == 0) return "No players.";
-
-            int top = ordered[0].Score;
-            var leaders = ordered.Where(p => p.Score == top).Select(p => p.Name).ToList();
-
-            return leaders.Count == 1
-                ? $"Winner: {leaders[0]} ({top})."
-                : $"It's a tie between {string.Join(" & ", leaders)} ({top}).";
         }
 
         // ----- Helpers --------------------------------------------------------------
