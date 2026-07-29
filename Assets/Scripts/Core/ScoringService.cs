@@ -7,44 +7,52 @@ namespace HuesNCues.Core
     /// depends on nothing else, the host can trust it as the single source of truth
     /// for points, and we can verify it with fast unit tests (see the Tests folder).
     ///
-    /// Rules (based on Hues &amp; Cues):
-    ///   - A guesser earns points by how close the guess is to the secret color.
-    ///   - The cue giver earns points when other players guess near the target,
-    ///     rewarding a good clue.
+    /// The "scoring frame" is the 3x3 block centred on the target colour: the target
+    /// itself plus the eight cells touching it.
     /// </summary>
     public static class ScoringService
     {
         /// <summary>
+        /// How far the scoring frame reaches from the target. 1 = the 3x3 block around
+        /// it (ring distance, so diagonals count the same as straight steps).
+        /// </summary>
+        public const int ScoringFrameRadius = 1;
+
+        /// <summary>Player count at which the cue giver's points are doubled.</summary>
+        public const int SmallGamePlayerCount = 3;
+
+        /// <summary>
         /// Points a guesser earns:
-        ///   exact cell        (distance 0) -> 3
-        ///   one ring away     (distance 1) -> 2
-        ///   two rings away    (distance 2) -> 1
-        ///   anything further               -> 0
+        ///   the exact colour                          -> 3
+        ///   inside the scoring frame, but not exact   -> 2
+        ///   touching the outside of the frame         -> 1
+        ///   anything further away                     -> 0
         /// </summary>
         public static int PointsForGuess(GridCoordinate target, GridCoordinate guess)
         {
             int d = target.DistanceTo(guess);
-            switch (d)
-            {
-                case 0: return 3;
-                case 1: return 2;
-                case 2: return 1;
-                default: return 0;
-            }
+            if (d == 0) return 3;
+            if (d <= ScoringFrameRadius) return 2;
+            if (d == ScoringFrameRadius + 1) return 1;
+            return 0;
         }
 
         /// <summary>
-        /// The cue giver earns 1 point for every guess that lands in the two scoring
-        /// rings (distance 2 or closer). A clue that pulls several players near the
-        /// target is worth more than one that only helps a single player.
+        /// The cue giver earns one point for every piece inside the scoring frame - and
+        /// two points per piece in a 3 player game, where there are fewer pieces to
+        /// collect. Pieces that only touch the outside of the frame earn them nothing.
         /// </summary>
-        public static int PointsForCueGiver(GridCoordinate target, IEnumerable<GridCoordinate> guesses)
+        public static int PointsForCueGiver(GridCoordinate target, IEnumerable<GridCoordinate> guesses,
+            int playerCount)
         {
-            int total = 0;
+            int perPiece = playerCount == SmallGamePlayerCount ? 2 : 1;
+
+            int inFrame = 0;
             foreach (var guess in guesses)
-                if (target.DistanceTo(guess) <= 2)
-                    total++;
-            return total;
+                if (target.DistanceTo(guess) <= ScoringFrameRadius)
+                    inFrame++;
+
+            return inFrame * perPiece;
         }
     }
 }

@@ -43,7 +43,7 @@ namespace HuesNCues.Tests
 
             Assert.AreEqual(MatchPhase.Reveal, s.Match.Phase);
             foreach (var g in s.Match.Guessers) Assert.AreEqual(6, g.Score); // two exact guesses each
-            Assert.AreEqual(4, cue.Score);                                   // four cubes in the rings
+            Assert.AreEqual(8, cue.Score);   // 4 cubes in the frame, doubled for 3 players
             Assert.Greater(changes, 0);                                      // the view would have redrawn
         }
 

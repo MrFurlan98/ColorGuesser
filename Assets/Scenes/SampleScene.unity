@@ -590,10 +590,12 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   board: {fileID: 522753105}
   matchView: {fileID: 1672300260}
+  session: {fileID: 0}
   defaultSettings:
     maxPlayers: 6
     targetScore: 25
     guessSeconds: 60
+  revealSeconds: 15
 --- !u!1 &1942437709
 GameObject:
   m_ObjectHideFlags: 0

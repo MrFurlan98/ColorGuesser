@@ -68,7 +68,8 @@ namespace HuesNCues.Tests
             // Two guessers, each with two exact guesses: 3 + 3 = 6 points each.
             foreach (var g in m.Guessers) Assert.AreEqual(6, g.Score);
             // Cue master: 4 cubes, all inside the rings, 1 point each = 4.
-            Assert.AreEqual(4, cue.Score);
+            // 4 cubes, all on the exact colour, in a 3 player game: 2 points each.
+            Assert.AreEqual(8, cue.Score);
         }
 
         [Test]

@@ -79,16 +79,31 @@ namespace HuesNCues.Tests
         }
 
         [Test]
-        public void CueGiverScoresOncePerGuessInsideTheRings()
+        public void CueGiverScoresOncePerPieceInsideTheScoringFrame()
         {
             var target = new GridCoordinate(5, 5);
             var guesses = new[]
             {
-                new GridCoordinate(5, 5), // distance 0 -> counts
-                new GridCoordinate(7, 5), // distance 2 -> counts
-                new GridCoordinate(9, 5), // distance 4 -> does not count
+                new GridCoordinate(5, 5), // the exact colour  -> inside the frame
+                new GridCoordinate(6, 6), // distance 1        -> inside the frame
+                new GridCoordinate(7, 5), // distance 2        -> only touches the frame
+                new GridCoordinate(9, 5), // distance 4        -> nowhere near
             };
-            Assert.AreEqual(2, ScoringService.PointsForCueGiver(target, guesses));
+            // 4 players: one point per piece inside the frame.
+            Assert.AreEqual(2, ScoringService.PointsForCueGiver(target, guesses, playerCount: 4));
+        }
+
+        [Test]
+        public void CueGiverScoresDoubleInAThreePlayerGame()
+        {
+            var target = new GridCoordinate(5, 5);
+            var guesses = new[]
+            {
+                new GridCoordinate(5, 5), // inside the frame
+                new GridCoordinate(4, 4), // inside the frame
+                new GridCoordinate(8, 5), // outside it
+            };
+            Assert.AreEqual(4, ScoringService.PointsForCueGiver(target, guesses, playerCount: 3));
         }
     }
 }

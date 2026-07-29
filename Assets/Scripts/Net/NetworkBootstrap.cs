@@ -4,16 +4,16 @@ using UnityEngine;
 namespace HuesNCues.Net
 {
     /// <summary>
-    /// A minimal connectivity harness for Netcode for GameObjects: it draws Host /
-    /// Client / Server buttons (immediate-mode GUI, so no UI setup) and shows the
-    /// current role and connected-client count. This is just to prove the transport
-    /// works locally; the real game wiring comes in the next step.
+    /// Developer-only connectivity harness for Netcode for GameObjects: Host / Client /
+    /// Server buttons plus the connected-client count, drawn with immediate-mode GUI.
+    /// Handy for testing a local connection without going through the menu and Relay.
     ///
-    /// Add it via Tools > Hues N Cues > Set Up Networking (which also creates a
-    /// configured NetworkManager). Then test with Multiplayer Play Mode.
+    /// EDITOR ONLY - the panel is compiled out of builds, where players connect through
+    /// the real menu instead.
     /// </summary>
     public class NetworkBootstrap : MonoBehaviour
     {
+#if UNITY_EDITOR
         private void OnGUI()
         {
             var nm = NetworkManager.Singleton;
@@ -43,5 +43,6 @@ namespace HuesNCues.Net
 
             GUILayout.EndArea();
         }
+#endif
     }
 }

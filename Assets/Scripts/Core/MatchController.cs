@@ -195,7 +195,7 @@ namespace HuesNCues.Core
 
             // The cue master scores for every cube that landed in the scoring rings.
             var allCubes = _guess1.Values.Concat(_guess2.Values);
-            int cuePoints = ScoringService.PointsForCueGiver(Target, allCubes);
+            int cuePoints = ScoringService.PointsForCueGiver(Target, allCubes, _players.Count);
             CueMaster.Score += cuePoints;
             _roundScores[CueMaster.Id] = cuePoints;
 
