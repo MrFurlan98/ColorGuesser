@@ -51,15 +51,18 @@ clearly academic/unlisted. Decide before the defence rather than be asked about 
 
 ## Medium priority
 
-### 4. Validation coverage is partial **(doc)**
+### 4. Validation coverage is partial **(doc)** — MOSTLY DONE
 §8 promises unit, functional, network, stability and usability testing.
-- Unit tests — ✅ (19, all in Core)
+- Unit tests — ✅ 34 tests total
+- **Network tests** — ✅ `Assets/Tests/NetworkSyncTests.cs` (17 tests): snapshot round-trip
+  (round in progress, players/colours/scores, per-round points, match history, derived
+  cue master, empty snapshot = lobby reset), command serialisation for all three command
+  types, host-authority rejections, lobby roster + settings sync, colour conflicts.
 - Functional — ⚠️ manual only
-- **Network tests** — ❌ nothing covers snapshot round-trip or server-side command rejection
 - Stability / disconnect — ⚠️ manual only
-- **Usability testing with invited users** — ❌ not done, and §8's acceptance criterion
+- **Usability testing with invited users** — ❌ still to do, and §8's acceptance criterion
   is explicitly *"um grupo de usuários conseguir criar uma sala… sem intervenção do
-  desenvolvedor"*
+  desenvolvedor"*. This one needs people, not code.
 
 ### 5. Evidence section incomplete **(doc)**
 §9 lists: Repositório GitHub (still TBD in the document), **Documentação da API**, prints

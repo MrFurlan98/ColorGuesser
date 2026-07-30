@@ -2,6 +2,7 @@
     "name": "ColorGuesser.Tests",
     "references": [
         "ColorGuesser.Core",
+        "ColorGuesser.Net",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

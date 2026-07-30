@@ -395,20 +395,9 @@ namespace ColorGuesser.Net
         /// First come, first served: a player keeps the colour they asked for unless
         /// somebody already holds it, in which case they get a random free one.
         /// </summary>
-        private int ResolveColor(ulong client, int requested)
-        {
-            requested = PlayerPalette.Clamp(requested);
-
-            bool taken = _colors.Any(kv => kv.Key != client && kv.Value == requested);
-            if (!taken) return requested;
-
-            var free = Enumerable.Range(0, PlayerPalette.Count)
-                .Where(i => !_colors.Any(kv => kv.Key != client && kv.Value == i))
-                .ToList();
-            if (free.Count == 0) return requested; // more players than colours: allow a repeat
-
-            return free[UnityEngine.Random.Range(0, free.Count)];
-        }
+        private int ResolveColor(ulong client, int requested) =>
+            ColorAssignment.Resolve(requested,
+                _colors.Where(kv => kv.Key != client).Select(kv => kv.Value));
 
         private int ColorFor(ulong clientId) =>
             _colors.TryGetValue(clientId, out var c) ? c : 0;
