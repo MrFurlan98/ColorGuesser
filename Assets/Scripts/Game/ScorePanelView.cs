@@ -4,7 +4,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>One player's result for the round just revealed.</summary>
     public struct RoundScoreInfo

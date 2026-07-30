@@ -3,7 +3,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// A row of segmented "chips" (toggles) where every option is visible at once and

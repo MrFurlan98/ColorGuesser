@@ -1,7 +1,7 @@
-using HuesNCues.Game;
+using ColorGuesser.Game;
 using UnityEngine;
 
-namespace HuesNCues.Net
+namespace ColorGuesser.Net
 {
     /// <summary>
     /// Drives the main menu: instantiates the MenuHud prefab and connects it to the

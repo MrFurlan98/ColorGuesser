@@ -1,8 +1,8 @@
 using System.Linq;
 using NUnit.Framework;
-using HuesNCues.Core;
+using ColorGuesser.Core;
 
-namespace HuesNCues.Tests
+namespace ColorGuesser.Tests
 {
     /// <summary>
     /// Drives the Match State Machine through complete rounds and checks the phase

@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// The 10 colors a player can pick for their marker. Colors are referenced by

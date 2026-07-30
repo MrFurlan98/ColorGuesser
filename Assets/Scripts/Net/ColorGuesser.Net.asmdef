@@ -1,8 +1,8 @@
 {
-    "name": "HuesNCues.Net",
+    "name": "ColorGuesser.Net",
     "references": [
-        "HuesNCues.Core",
-        "HuesNCues.Game",
+        "ColorGuesser.Core",
+        "ColorGuesser.Game",
         "Unity.Netcode.Runtime",
         "Unity.Networking.Transport",
         "Unity.Services.Core",

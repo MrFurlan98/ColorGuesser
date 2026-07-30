@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using HuesNCues.Core;
-using HuesNCues.Game;
+using ColorGuesser.Core;
+using ColorGuesser.Game;
 using Unity.Netcode;
 using UnityEngine;
 
-namespace HuesNCues.Net
+namespace ColorGuesser.Net
 {
     /// <summary>
     /// The Network Gateway: runs a match host-authoritatively over Netcode for
@@ -21,7 +21,7 @@ namespace HuesNCues.Net
     ///   - Server validates every command against the sender's id, so no client can
     ///     act as another player.
     ///
-    /// Lives on an in-scene NetworkObject (created by Tools > Hues N Cues > Set Up
+    /// Lives on an in-scene NetworkObject (created by Tools > Adivinhe a Cor > Set Up
     /// Networking) with references to the scene's BoardView and MatchView.
     /// </summary>
     [RequireComponent(typeof(NetworkObject))]

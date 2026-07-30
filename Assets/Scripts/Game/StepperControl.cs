@@ -3,7 +3,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// A "− value +" stepper for picking one of an ordered list of numbers. Better than

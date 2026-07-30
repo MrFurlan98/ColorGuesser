@@ -1,4 +1,4 @@
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// What happened in one finished round. The match keeps these so the end-of-game

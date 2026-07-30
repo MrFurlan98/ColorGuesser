@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
-using HuesNCues.Core;
+using ColorGuesser.Core;
 using UnityEngine;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// Drives a match through an IMatchSession (the seam): reads state from
@@ -177,7 +177,7 @@ namespace HuesNCues.Game
         }
 
         private void ShowCoord(GridCoordinate coord) =>
-            _hud.ShowColor(true, board.ColorOf(coord), coord.Label, board.NameOf(coord));
+            _hud.ShowColor(true, board.ColorOf(coord), coord.Label);
 
         private void ClearPendingGuess()
         {
@@ -230,6 +230,7 @@ namespace HuesNCues.Game
 
             _hud.SetVisible(false);
             _hud.ShowGameplay(false);
+            _hud.ShowGameInfo(false);
             _hud.ShowFinalScreen(false);
             _hud.HideScorePanel();
             _hud.HideFinalScores();
@@ -264,6 +265,9 @@ namespace HuesNCues.Game
             _hud.SetVisible(true);
             _hud.ShowGameplay(playing);
             board.SetBoardVisible(playing);
+
+            // GameInfo and the reveal score panel are siblings: exactly one is on.
+            _hud.ShowGameInfo(MatchController.IsTimedPhase(phase));
 
             bool cluePhase = phase == MatchPhase.CueMasterClue1 || phase == MatchPhase.CueMasterClue2;
             bool mayGiveClue = cluePhase && (me == null || amCue); // hotseat, or I'm the cue master
@@ -398,7 +402,7 @@ namespace HuesNCues.Game
 
             if (best != null) stats.BestClue = best.ClueText.ToUpperInvariant();
             if (hardest != null)
-                stats.HardestColor = $"{board.NameOf(hardest.Target)} ({hardest.Target.Label})";
+                stats.HardestColor = hardest.Target.Label;
 
             return stats;
         }

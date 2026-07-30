@@ -1,7 +1,7 @@
 {
-    "name": "HuesNCues.Game",
+    "name": "ColorGuesser.Game",
     "references": [
-        "HuesNCues.Core",
+        "ColorGuesser.Core",
         "UnityEngine.UI",
         "Unity.TextMeshPro"
     ],

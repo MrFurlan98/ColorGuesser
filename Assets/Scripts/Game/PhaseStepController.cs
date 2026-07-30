@@ -2,7 +2,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// One step in the round progress strip (Clue 1, Guess 1, Clue 2, Guess 2, Reveal).

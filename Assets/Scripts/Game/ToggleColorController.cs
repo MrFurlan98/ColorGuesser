@@ -1,9 +1,9 @@
 using System;
-using HuesNCues.Core;
+using ColorGuesser.Core;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// One colour option in the menu. Put this on each colour Toggle: it owns which

@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// Turns the board spreadsheet (exported as CSV) into a ColorBoard.

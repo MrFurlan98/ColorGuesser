@@ -1,10 +1,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using HuesNCues.Core;
+using ColorGuesser.Core;
 using UnityEngine;
 
-namespace HuesNCues.Net
+namespace ColorGuesser.Net
 {
     /// <summary>
     /// Serializable full snapshot of the match state. The host captures one from its

@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using HuesNCues.Game;
+using ColorGuesser.Game;
 using UnityEngine;
 
-namespace HuesNCues.Net
+namespace ColorGuesser.Net
 {
     /// <summary>
     /// Drives the in-room lobby: the room code (+ copy to clipboard), the player grid,

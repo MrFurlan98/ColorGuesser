@@ -1,12 +1,14 @@
 using System;
 using System.Threading.Tasks;
-using HuesNCues.Core;
+using ColorGuesser.Core;
+using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
 using Unity.Services.Authentication;
 using Unity.Services.Core;
 using Unity.Services.Multiplayer;
 using UnityEngine;
 
-namespace HuesNCues.Net
+namespace ColorGuesser.Net
 {
     /// <summary>
     /// Relay-backed connection using the Multiplayer Services SDK (Sessions API).
@@ -63,6 +65,22 @@ namespace HuesNCues.Net
 
         private void SetStatus(string s) { _status = s; Changed?.Invoke(); }
 
+        /// <summary>
+        /// Makes Unity Transport agree with the protocol Relay will hand us.
+        /// RelayProtocol.Default is secure WebSockets on WebGL (browsers cannot open raw
+        /// UDP) and DTLS everywhere else - and UNITY_WEBGL is also defined in the Editor
+        /// whenever the active build target is WebGL. If the transport's "Use WebSockets"
+        /// setting disagrees with the allocation, it refuses to start.
+        /// </summary>
+        private static void MatchTransportToRelayProtocol()
+        {
+            var manager = NetworkManager.Singleton;
+            var transport = manager != null ? manager.GetComponent<UnityTransport>() : null;
+            if (transport == null) return;
+
+            transport.UseWebSockets = RelayProtocol.Default == RelayProtocol.WSS;
+        }
+
         private async Task EnsureSignedInAsync()
         {
             if (UnityServices.State != ServicesInitializationState.Initialized)
@@ -87,6 +105,7 @@ namespace HuesNCues.Net
             try
             {
                 await EnsureSignedInAsync();
+                MatchTransportToRelayProtocol();
                 var options = new SessionOptions { MaxPlayers = maxPlayers }.WithRelayNetwork();
                 _session = await MultiplayerService.Instance.CreateSessionAsync(options);
                 SetStatus("Hosting");
@@ -107,6 +126,7 @@ namespace HuesNCues.Net
             try
             {
                 await EnsureSignedInAsync();
+                MatchTransportToRelayProtocol();
                 _session = await MultiplayerService.Instance.JoinSessionByCodeAsync(code.Trim());
                 SetStatus("Joined");
             }

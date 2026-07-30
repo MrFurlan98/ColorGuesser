@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// Swaps the panel inside GameInfo according to this player's role in the round:

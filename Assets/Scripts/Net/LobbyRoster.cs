@@ -1,7 +1,7 @@
 using System.Text;
 using UnityEngine;
 
-namespace HuesNCues.Net
+namespace ColorGuesser.Net
 {
     /// <summary>
     /// The pre-match player list (who is connected, their nickname, colour and ready

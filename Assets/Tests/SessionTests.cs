@@ -1,8 +1,8 @@
 using System.Linq;
 using NUnit.Framework;
-using HuesNCues.Core;
+using ColorGuesser.Core;
 
-namespace HuesNCues.Tests
+namespace ColorGuesser.Tests
 {
     /// <summary>
     /// Verifies the session seam: driving a match purely through commands sent to an

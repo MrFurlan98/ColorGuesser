@@ -1,4 +1,4 @@
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// A participant in a match. Score accumulates across rounds. Only the Core

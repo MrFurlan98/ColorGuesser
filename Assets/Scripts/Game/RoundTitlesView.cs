@@ -1,8 +1,8 @@
-using HuesNCues.Core;
+using ColorGuesser.Core;
 using TMPro;
 using UnityEngine;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// The "Titles" block: round number, phase title and subtitle. All the wording

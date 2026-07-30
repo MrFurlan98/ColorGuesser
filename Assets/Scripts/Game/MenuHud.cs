@@ -1,10 +1,10 @@
 using System;
-using HuesNCues.Core;
+using ColorGuesser.Core;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// Passive view for the main menu (Humble Object / MVP): nickname, colour choice,

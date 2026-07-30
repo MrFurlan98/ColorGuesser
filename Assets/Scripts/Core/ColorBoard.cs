@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// The color grid: 30 columns x 16 rows = 480 cells, matching the proposal.

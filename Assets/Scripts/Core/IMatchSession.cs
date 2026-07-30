@@ -1,6 +1,6 @@
 using System;
 
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// The seam between the game UI and "how a match is run" (Facade / Gateway - the

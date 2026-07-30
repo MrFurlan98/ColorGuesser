@@ -1,4 +1,4 @@
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// An action a player wants to perform, packaged as an object (Command pattern).

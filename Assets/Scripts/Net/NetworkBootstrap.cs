@@ -1,7 +1,7 @@
 using Unity.Netcode;
 using UnityEngine;
 
-namespace HuesNCues.Net
+namespace ColorGuesser.Net
 {
     /// <summary>
     /// Developer-only connectivity harness for Netcode for GameObjects: Host / Client /
@@ -21,7 +21,7 @@ namespace HuesNCues.Net
 
             if (nm == null)
             {
-                GUILayout.Label("No NetworkManager in the scene.\nRun Tools > Hues N Cues > Set Up Networking.");
+                GUILayout.Label("No NetworkManager in the scene.\nRun Tools > Adivinhe a Cor > Set Up Networking.");
                 GUILayout.EndArea();
                 return;
             }

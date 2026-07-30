@@ -2,9 +2,9 @@ using System.Linq;
 using System.Text;
 using NUnit.Framework;
 using UnityEngine;
-using HuesNCues.Core;
+using ColorGuesser.Core;
 
-namespace HuesNCues.Tests
+namespace ColorGuesser.Tests
 {
     /// <summary>
     /// Fast, deterministic checks on the game brain. These run in Unity's

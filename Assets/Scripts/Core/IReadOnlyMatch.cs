@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// A read-only view of the current match state. The UI renders itself from this

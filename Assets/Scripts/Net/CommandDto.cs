@@ -1,8 +1,8 @@
 using System.Text;
-using HuesNCues.Core;
+using ColorGuesser.Core;
 using UnityEngine;
 
-namespace HuesNCues.Net
+namespace ColorGuesser.Net
 {
     /// <summary>
     /// Serializable wire form of an IMatchCommand (Command pattern travelling over the

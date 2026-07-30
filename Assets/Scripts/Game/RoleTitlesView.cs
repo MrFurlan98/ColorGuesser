@@ -1,7 +1,7 @@
 using TMPro;
 using UnityEngine;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// The title/subtitle inside GameInfo, which reads differently for the cue master

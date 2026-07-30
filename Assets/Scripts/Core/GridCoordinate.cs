@@ -1,6 +1,6 @@
 using System;
 
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// A single cell position on the color board.

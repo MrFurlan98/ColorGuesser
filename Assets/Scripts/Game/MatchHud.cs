@@ -1,10 +1,10 @@
 using System;
-using HuesNCues.Core;
+using ColorGuesser.Core;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// Passive view (Humble Object / MVP pattern) for the match HUD, and the facade the
@@ -70,6 +70,10 @@ namespace HuesNCues.Game
         [Tooltip("The 'Final Score' container holding the scoreboard and the stats panel. " +
                  "Shown only when the match is over.")]
         [SerializeField] private GameObject finalScreenRoot;
+
+        [Tooltip("The 'GameInfo' container (timer, clue, role panels). Shown while a round " +
+                 "is being played and hidden at the reveal, where the score panel takes over.")]
+        [SerializeField] private GameObject gameInfoRoot;
 
         /// <summary>Raised when the cue master submits a clue (button or Enter key).</summary>
         public event Action SubmitClueRequested;
@@ -159,6 +163,16 @@ namespace HuesNCues.Game
         {
             if (finalScreenRoot != null && finalScreenRoot.activeSelf != visible)
                 finalScreenRoot.SetActive(visible);
+        }
+
+        /// <summary>
+        /// Shows/hides the round info panel. It and the reveal score panel are siblings
+        /// that must never be on together - one replaces the other.
+        /// </summary>
+        public void ShowGameInfo(bool visible)
+        {
+            if (gameInfoRoot != null && gameInfoRoot.activeSelf != visible)
+                gameInfoRoot.SetActive(visible);
         }
 
         // ----- Forwarded to the sub-views -------------------------------------------

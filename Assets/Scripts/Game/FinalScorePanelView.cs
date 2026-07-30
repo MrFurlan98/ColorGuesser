@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>One row of the final scoreboard, already ranked.</summary>
     public struct FinalScoreInfo

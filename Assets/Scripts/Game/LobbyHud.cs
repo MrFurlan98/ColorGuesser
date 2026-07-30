@@ -4,7 +4,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>One row of lobby data handed to the view (no networking types here).</summary>
     public struct LobbyPlayerInfo

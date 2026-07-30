@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
-using HuesNCues.Core;
+using ColorGuesser.Core;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// Renders the 480-cell color board on a uGUI Canvas and reports clicks. It only
@@ -32,6 +32,10 @@ namespace HuesNCues.Game
 
         [Tooltip("Gap between cells in UI pixels.")]
         [SerializeField] private float spacing = 2f;
+
+        [Tooltip("Name of the board CSV inside a Resources folder (no extension). " +
+                 "\"BoardGenerated\" is the palette produced by Tools > Generate Board Palette.")]
+        [SerializeField] private string boardDataResource = "BoardData";
 
         [Tooltip("Prefab used for each of the 480 cells. Leave empty for a plain Image. " +
                  "Keep it light — it is instantiated 480 times.")]
@@ -191,10 +195,11 @@ namespace HuesNCues.Game
 
         private ColorBoard LoadBoard()
         {
-            var asset = Resources.Load<TextAsset>("BoardData");
+            string resource = string.IsNullOrWhiteSpace(boardDataResource) ? "BoardData" : boardDataResource;
+            var asset = Resources.Load<TextAsset>(resource);
             if (asset == null)
             {
-                Debug.LogWarning("BoardData not found in a Resources folder; using the procedural board.");
+                Debug.LogWarning($"'{resource}' not found in a Resources folder; using the procedural board.");
                 return ColorBoard.CreateProcedural();
             }
 
@@ -204,7 +209,7 @@ namespace HuesNCues.Game
             }
             catch (Exception e)
             {
-                Debug.LogError($"Failed to parse BoardData.csv ({e.Message}); using the procedural board.");
+                Debug.LogError($"Failed to parse {resource}.csv ({e.Message}); using the procedural board.");
                 return ColorBoard.CreateProcedural();
             }
         }
@@ -267,9 +272,11 @@ namespace HuesNCues.Game
                 var cell = CreateCell(coord);
                 var rt = (RectTransform)cell.transform;
                 rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
-                rt.pivot = new Vector2(0f, 1f);
+                // Centre pivot, positioned by the cell's centre: scaling the target cell
+                // at the reveal then grows it outwards instead of down and to the right.
+                rt.pivot = new Vector2(0.5f, 0.5f);
                 rt.sizeDelta = new Vector2(cellSize, cellSize);
-                rt.anchoredPosition = new Vector2(Gutter + coord.Column * Step, -(Gutter + coord.Row * Step));
+                rt.anchoredPosition = CellCenter(coord);
 
                 cell.SetColor(_board.GetColor(coord));
 

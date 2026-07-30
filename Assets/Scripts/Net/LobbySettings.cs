@@ -1,4 +1,4 @@
-namespace HuesNCues.Net
+namespace ColorGuesser.Net
 {
     /// <summary>
     /// Room settings chosen by the host in the lobby. Travels inside the LobbyRoster

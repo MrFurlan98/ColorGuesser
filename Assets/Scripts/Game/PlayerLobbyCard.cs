@@ -1,9 +1,9 @@
-using HuesNCues.Core;
+using ColorGuesser.Core;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// One player entry in the lobby grid. Goes on the PlayerLobbyCard prefab: shows

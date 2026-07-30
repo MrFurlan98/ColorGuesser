@@ -293,6 +293,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cellSize: 28
   spacing: 2
+  boardDataResource: BoardGenerated
   cellPrefab: {fileID: 0}
   labelPrefab: {fileID: 0}
   cellSprite: {fileID: 0}

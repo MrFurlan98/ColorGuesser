@@ -1,7 +1,7 @@
-using HuesNCues.Core;
+using ColorGuesser.Core;
 using UnityEngine;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// The "Phases" strip: Clue 1 → Guess 1 → Clue 2 → Guess 2 → Reveal. Each step

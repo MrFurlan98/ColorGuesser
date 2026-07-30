@@ -1,7 +1,7 @@
 using TMPro;
 using UnityEngine;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// The "Clue" block inside GameInfo: shows the round's clue words in uppercase

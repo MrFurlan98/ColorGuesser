@@ -13,7 +13,7 @@ PlayerSettings:
   useOnDemandResources: 0
   accelerometerFrequency: 60
   companyName: DefaultCompany
-  productName: HuesNCues
+  productName: Adivinhe a Cor
   defaultCursor: {fileID: 0}
   cursorHotspot: {x: 0, y: 0}
   m_SplashScreenBackgroundColor: {r: 0.13725491, g: 0.12156863, b: 0.1254902, a: 1}
@@ -919,7 +919,7 @@ PlayerSettings:
   cloudProjectId: a5af9dc1-a07e-471f-a87f-f0501f982502
   framebufferDepthMemorylessMode: 0
   qualitySettingsNames: []
-  projectName: Hues And Cues
+  projectName: Adivinhe a Cor
   organizationId: unity_pzzhwkhvc5nytg
   cloudEnabled: 0
   legacyClampBlendShapeWeights: 0

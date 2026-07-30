@@ -19,7 +19,24 @@ nickname and colour are stored (PlayerPrefs).
 in the document to local-only. Whichever is chosen, the C4 diagram and the build should
 agree.
 
-### 2. Intellectual property of the published build **(doc)**
+### 2. Intellectual property of the published build **(doc)** — PARTLY DONE
+**Done (2026-07-29):** renamed throughout — display name **"Adivinhe a Cor"**, code
+identity **`ColorGuesser`** (namespaces, assemblies), Unity product + cloud project name,
+menu paths, and a README with a "not affiliated" disclaimer in PT and EN.
+
+**Also done:** colour names are no longer displayed anywhere (the "Hardest Color" stat now
+shows just the board code), and `Tools > Adivinhe a Cor > Generate Board Palette` produces
+an own palette in `Assets/Resources/BoardGenerated.csv` — computed in OkLCh, not sampled.
+
+**Still to do:**
+- Rename the **GitHub repo** and re-deploy so the public URL no longer says `hues-n-cues`.
+- Rename the **Unity Cloud project** in the dashboard (the local string is updated, but the
+  dashboard is the authoritative source).
+- **Switch the board over**: set `BoardView.boardDataResource` to `BoardGenerated`, play a
+  few rounds to confirm it feels right, then delete `BoardData.csv` (the retail colours).
+  Until that file is gone the exposure remains.
+
+Original finding:
 §1 states the prototype must use *"identidade visual própria, nomenclaturas alternativas
 e componentes autorais **caso venha a ser publicada além do ambiente acadêmico**"*.
 

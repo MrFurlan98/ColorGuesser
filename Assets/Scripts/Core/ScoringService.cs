@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// The scoring rules, as pure math: no Unity objects, no network. Because it

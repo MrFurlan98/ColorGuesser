@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// The fixed player list used by the offline hotseat game (online matches build

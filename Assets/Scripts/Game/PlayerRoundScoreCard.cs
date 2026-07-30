@@ -1,17 +1,18 @@
 using System.Collections;
-using HuesNCues.Core;
+using ColorGuesser.Core;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace HuesNCues.Game
+namespace ColorGuesser.Game
 {
     /// <summary>
     /// One row of the round score panel: a player's colour, name, the points they earned
     /// in the round just revealed and their running total.
     ///
-    /// When both score texts are assigned the points animate: the "+3" drifts across to
-    /// the total and fades out while the total counts up to its new value.
+    /// The numbers count up rather than appearing at once: first the round score climbs
+    /// from zero, then the running total climbs to its new value. Nothing moves or fades,
+    /// so the effect is immune to how the row is laid out.
     /// </summary>
     public class PlayerRoundScoreCard : MonoBehaviour
     {
@@ -21,8 +22,7 @@ namespace HuesNCues.Game
         [SerializeField] private TextMeshProUGUI scoreText;
 
         [Tooltip("Optional separate text for the running total. Leave empty to append it " +
-                 "to the round score instead (tinted with its own colour). Required for " +
-                 "the count-up animation.")]
+                 "to the round score instead (tinted with its own colour).")]
         [SerializeField] private TextMeshProUGUI totalText;
 
         [Tooltip("Image tinted with the player's colour.")]
@@ -48,22 +48,22 @@ namespace HuesNCues.Game
         [Tooltip("Placed between the two when they share one text object.")]
         [SerializeField] private string separator = " ";
 
-        [Header("Animation")]
-        [Tooltip("Fly the round score into the total and count the total up.")]
+        [Header("Count-up")]
         [SerializeField] private bool animateScore = true;
 
-        [Tooltip("Pause before the points fly across, so the numbers can be read first.")]
-        [SerializeField] private float startDelay = 0.4f;
+        [Tooltip("Pause before the numbers start climbing.")]
+        [SerializeField] private float startDelay = 0.3f;
 
-        [SerializeField] private float duration = 0.6f;
+        [Tooltip("Seconds for the numbers to climb to their final values.")]
+        [SerializeField] private float countDuration = 0.5f;
 
-        [Tooltip("Layout group holding the score texts. It is switched off while the " +
-                 "points fly across, otherwise the layout fights the animation. " +
-                 "Auto-found from the score text's parent if left empty.")]
-        [SerializeField] private LayoutGroup scoreLayout;
-
-        private Vector2 _scoreHome;   // where the layout puts the round score
         private Coroutine _animation;
+
+        // What this card is currently showing, so repeated updates with the same numbers
+        // do not restart (or interrupt) the count-up.
+        private string _shownName;
+        private int _shownRound, _shownTotal;
+        private bool _populated;
 
         /// <summary>
         /// Fills the row. The round score is coloured by whether the player scored; the
@@ -71,110 +71,93 @@ namespace HuesNCues.Game
         /// </summary>
         public void Set(string playerName, int colorIndex, int roundScore, int totalScore)
         {
+            // The panel is refreshed on every state change (each incoming "next round"
+            // vote, for instance). Re-running the count-up then would restart it - or,
+            // with refreshes arriving faster than the start delay, stop it ever playing.
+            if (_populated && roundScore == _shownRound && totalScore == _shownTotal &&
+                playerName == _shownName)
+                return;
+
+            _shownName = playerName;
+            _shownRound = roundScore;
+            _shownTotal = totalScore;
+            _populated = true;
+
             StopAnimation();
-            RelayoutAndCacheHome(); // layout decides the positions, then we take over
 
             if (nameText != null) nameText.text = playerName;
             if (colorImage != null) colorImage.color = PlayerPalette.Get(colorIndex);
+            if (scoreText != null) scoreText.color = roundScore > 0 ? positiveScoreColor : zeroScoreColor;
+            if (totalText != null) totalText.color = totalScoreColor;
 
-            string round = string.Format(roundFormat, roundScore);
-            string total = string.Format(totalFormat, totalScore);
-            Color roundColor = roundScore > 0 ? positiveScoreColor : zeroScoreColor;
-
-            // Cards are pooled, so always restore the pre-animation look first.
-            if (scoreText != null)
+            // Nothing to count when no points were won: the total has not moved either.
+            bool canAnimate = animateScore && roundScore > 0 && isActiveAndEnabled;
+            if (!canAnimate)
             {
-                scoreText.rectTransform.anchoredPosition = _scoreHome;
-                scoreText.alpha = 1f;
-                scoreText.text = round;
-                scoreText.color = roundColor;
-            }
-
-            if (totalText == null)
-            {
-                // One object: the base colour covers the round score and a rich-text tag
-                // overrides it for the total. No animation is possible here.
-                if (scoreText != null)
-                    scoreText.text = $"{round}{separator}" +
-                                     $"<color=#{ColorUtility.ToHtmlStringRGB(totalScoreColor)}>{total}</color>";
+                Render(roundScore, totalScore);
                 return;
             }
 
-            totalText.color = totalScoreColor;
+            Render(0, totalScore - roundScore);   // start from before this round
+            _animation = StartCoroutine(CountUp(roundScore, totalScore));
+        }
 
-            bool canAnimate = animateScore && scoreText != null && roundScore > 0 && isActiveAndEnabled;
-            if (!canAnimate)
+        /// <summary>Both numbers climb together: the round score from zero, the total
+        /// from where it stood before this round.</summary>
+        private IEnumerator CountUp(int roundScore, int totalScore)
+        {
+            yield return new WaitForSeconds(startDelay);
+
+            int totalBefore = totalScore - roundScore;
+            float t = 0f;
+
+            while (t < 1f)
             {
+                t += Time.deltaTime / Mathf.Max(0.01f, countDuration);
+                float e = Mathf.Clamp01(t);
+
+                Render(Mathf.RoundToInt(Mathf.Lerp(0f, roundScore, e)),
+                       Mathf.RoundToInt(Mathf.Lerp(totalBefore, totalScore, e)));
+                yield return null;
+            }
+
+            Render(roundScore, totalScore);
+            _animation = null;
+        }
+
+        /// <summary>Writes the two numbers, into one text object or two.</summary>
+        private void Render(int roundValue, int totalValue)
+        {
+            string round = string.Format(roundFormat, roundValue);
+            string total = string.Format(totalFormat, totalValue);
+
+            if (totalText != null)
+            {
+                if (scoreText != null) scoreText.text = round;
                 totalText.text = total;
                 return;
             }
 
-            // Start from the total BEFORE this round, then count up to it.
-            totalText.text = string.Format(totalFormat, totalScore - roundScore);
-            _animation = StartCoroutine(AnimateScore(roundScore, totalScore));
-        }
-
-        private IEnumerator AnimateScore(int roundScore, int totalScore)
-        {
-            yield return new WaitForSeconds(startDelay);
-
-            // Only travel if both texts share a parent; otherwise just fade in place.
-            bool sameParent = scoreText.rectTransform.parent == totalText.rectTransform.parent;
-            Vector2 target = sameParent ? totalText.rectTransform.anchoredPosition : _scoreHome;
-
-            // Hand control of the position over from the layout group to this animation.
-            if (scoreLayout != null) scoreLayout.enabled = false;
-
-            int from = totalScore - roundScore;
-            float t = 0f;
-            while (t < 1f)
-            {
-                t += Time.deltaTime / Mathf.Max(0.01f, duration);
-                float e = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t));
-
-                scoreText.rectTransform.anchoredPosition = Vector2.Lerp(_scoreHome, target, e);
-                scoreText.alpha = 1f - e;
-                totalText.text = string.Format(totalFormat, Mathf.RoundToInt(Mathf.Lerp(from, totalScore, e)));
-                yield return null;
-            }
-
-            scoreText.alpha = 0f;
-            totalText.text = string.Format(totalFormat, totalScore);
-            _animation = null;
-        }
-
-        /// <summary>
-        /// Turns the layout group back on and forces it to run, so the texts are back in
-        /// their proper places after a previous animation moved them. The resulting
-        /// position is what the next animation starts from.
-        /// </summary>
-        private void RelayoutAndCacheHome()
-        {
-            if (scoreText == null) return;
-
-            if (scoreLayout == null && scoreText.rectTransform.parent != null)
-                scoreLayout = scoreText.rectTransform.parent.GetComponent<LayoutGroup>();
-
-            if (scoreLayout != null)
-            {
-                scoreLayout.enabled = true;
-                LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)scoreLayout.transform);
-            }
-
-            _scoreHome = scoreText.rectTransform.anchoredPosition;
+            // One object: the base colour covers the round score and a rich-text tag
+            // gives the total its own colour.
+            if (scoreText != null)
+                scoreText.text = $"{round}{separator}" +
+                                 $"<color=#{ColorUtility.ToHtmlStringRGB(totalScoreColor)}>{total}</color>";
         }
 
         private void StopAnimation()
         {
-            if (_animation != null)
-            {
-                StopCoroutine(_animation);
-                _animation = null;
-            }
-            // Never leave the card with its layout switched off.
-            if (scoreLayout != null) scoreLayout.enabled = true;
+            if (_animation == null) return;
+            StopCoroutine(_animation);
+            _animation = null;
         }
 
-        private void OnDisable() => StopAnimation();
+        private void OnDisable()
+        {
+            StopAnimation();
+            // The panel was closed, so the next reveal should count up again even if the
+            // numbers happen to repeat.
+            _populated = false;
+        }
     }
 }

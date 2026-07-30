@@ -1,4 +1,4 @@
-namespace HuesNCues.Core
+namespace ColorGuesser.Core
 {
     /// <summary>
     /// The steps a round moves through, in order. The UI shows different things in
