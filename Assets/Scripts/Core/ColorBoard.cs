@@ -8,7 +8,7 @@ namespace ColorGuesser.Core
     /// The color grid: 30 columns x 16 rows = 480 cells, matching the proposal.
     ///
     /// The board is now DATA-DRIVEN: each cell's color and name come from the
-    /// authored spreadsheet (see BoardCsvParser + Assets/Resources/BoardData.csv),
+    /// board CSV in Resources (see BoardCsvParser and the palette generator),
     /// not from a formula. The colors are still fixed, so every client that loads
     /// the same file shows the same board and the host only needs to send the
     /// secret coordinate over the network.

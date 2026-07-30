@@ -35,7 +35,7 @@ namespace ColorGuesser.Game
 
         [Tooltip("Name of the board CSV inside a Resources folder (no extension). " +
                  "\"BoardGenerated\" is the palette produced by Tools > Generate Board Palette.")]
-        [SerializeField] private string boardDataResource = "BoardData";
+        [SerializeField] private string boardDataResource = "BoardGenerated";
 
         [Tooltip("Prefab used for each of the 480 cells. Leave empty for a plain Image. " +
                  "Keep it light — it is instantiated 480 times.")]
@@ -71,7 +71,7 @@ namespace ColorGuesser.Game
         [SerializeField] private float marginBottom = 160f;
         [SerializeField] private float marginLeft = 40f;
 
-        private ColorBoard _board;              // loaded from Resources/BoardData.csv
+        private ColorBoard _board;              // loaded from a CSV in Resources
         private BoardCellView[] _cells;         // indexed by row * Columns + col
         private RectTransform _boardArea;       // fills the canvas; the board is fitted inside it
         private RectTransform _boardPanel;      // fixed design-size grid, scaled to fit _boardArea
@@ -195,7 +195,7 @@ namespace ColorGuesser.Game
 
         private ColorBoard LoadBoard()
         {
-            string resource = string.IsNullOrWhiteSpace(boardDataResource) ? "BoardData" : boardDataResource;
+            string resource = string.IsNullOrWhiteSpace(boardDataResource) ? "BoardGenerated" : boardDataResource;
             var asset = Resources.Load<TextAsset>(resource);
             if (asset == null)
             {

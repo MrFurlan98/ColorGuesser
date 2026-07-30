@@ -32,7 +32,7 @@ Assets/Scripts/Core    regras do jogo (sem Unity UI, sem rede) + testes
 Assets/Scripts/Game    interface e visualização do tabuleiro
 Assets/Scripts/Net     sessões, sincronização e host autoritativo
 Assets/Scripts/Editor  geradores de prefabs e utilitários de projeto
-Assets/Resources       dados do tabuleiro (BoardData.csv)
+Assets/Resources       dados do tabuleiro (BoardGenerated.csv)
 ```
 
 ## Aviso / Disclaimer

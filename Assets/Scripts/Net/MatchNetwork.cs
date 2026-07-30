@@ -51,6 +51,11 @@ namespace ColorGuesser.Net
         [Tooltip("Seconds the reveal waits before moving on by itself.")]
         [SerializeField] private float revealSeconds = 15f;
 
+        [Tooltip("Players needed to start in a BUILD. The game is designed for 3+ (the " +
+                 "scoring rules have a special case for exactly 3). In the editor the " +
+                 "minimum drops to 2 so a match can be tested with two virtual players.")]
+        [SerializeField] private int minPlayersToStart = 3;
+
         private LobbySettings _settings;      // host-chosen; mirrored to clients via the roster
         private float _guessDeadline = -1f;   // local countdown for the current guessing phase
         private MatchPhase _lastPhase = MatchPhase.NotStarted;
@@ -85,6 +90,18 @@ namespace ColorGuesser.Net
         public bool InLobby => IsSpawned && Match.Phase == MatchPhase.NotStarted;
         public void HostStartMatch() { if (IsServer) StartMatchServer(); }
 
+        /// <summary>
+        /// Players needed before the host can start (the lobby greys out below this).
+        /// Relaxed to 2 in the editor so a match can be exercised with two virtual
+        /// players; builds use the configured value.
+        /// </summary>
+        public int MinPlayersToStart =>
+#if UNITY_EDITOR
+            Mathf.Min(2, minPlayersToStart);
+#else
+            minPlayersToStart;
+#endif
+
         /// <summary>Is this client marked ready? (The host is always considered ready.)</summary>
         public bool LocalReady
         {
@@ -104,7 +121,8 @@ namespace ColorGuesser.Net
         {
             get
             {
-                if (_lobby?.clientIds == null || _lobby.clientIds.Length < 2) return false;
+                if (_lobby?.clientIds == null || _lobby.clientIds.Length < MinPlayersToStart)
+                    return false;
                 for (int i = 0; i < _lobby.clientIds.Length; i++)
                 {
                     if (_lobby.clientIds[i] == _lobby.hostId) continue; // host doesn't ready up
@@ -330,9 +348,9 @@ namespace ColorGuesser.Net
             var players = NetworkManager.ConnectedClientsIds
                 .Select((id, i) => new Player(id.ToString(), NameFor(id, i), ColorFor(id)))
                 .ToList();
-            if (players.Count < 2)
+            if (players.Count < MinPlayersToStart)
             {
-                Debug.LogWarning("Need at least 2 connected players to start.");
+                Debug.LogWarning($"Need at least {MinPlayersToStart} connected players to start.");
                 return;
             }
 
@@ -359,6 +377,18 @@ namespace ColorGuesser.Net
         private void OnClientConnected(ulong clientId)
         {
             if (!IsServer) return;
+
+            // Enforce the room size the host chose. The Relay session is created with the
+            // largest allowed cap, so this is what actually holds a room to, say, 6.
+            int capacity = Settings != null ? Settings.maxPlayers : int.MaxValue;
+            if (clientId != NetworkManager.LocalClientId &&
+                NetworkManager.ConnectedClientsIds.Count > capacity)
+            {
+                Debug.Log($"Room is full ({capacity}); disconnecting client {clientId}.");
+                NetworkManager.DisconnectClient(clientId);
+                return;
+            }
+
             BroadcastLobby();
             // Always sync the current state to (re)connecting clients - even when no
             // match is running - so they land on the lobby instead of a stale game.

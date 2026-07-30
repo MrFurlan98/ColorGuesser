@@ -28,13 +28,19 @@ menu paths, and a README with a "not affiliated" disclaimer in PT and EN.
 shows just the board code), and `Tools > Adivinhe a Cor > Generate Board Palette` produces
 an own palette in `Assets/Resources/BoardGenerated.csv` — computed in OkLCh, not sampled.
 
-**Still to do:**
-- Rename the **GitHub repo** and re-deploy so the public URL no longer says `hues-n-cues`.
-- Rename the **Unity Cloud project** in the dashboard (the local string is updated, but the
-  dashboard is the authoritative source).
-- **Switch the board over**: set `BoardView.boardDataResource` to `BoardGenerated`, play a
-  few rounds to confirm it feels right, then delete `BoardData.csv` (the retail colours).
-  Until that file is gone the exposure remains.
+**Also done by the author (2026-07-29):** GitHub repo renamed and re-deployed, Unity Cloud
+project renamed, and the scene switched to the generated palette
+(`BoardView.boardDataResource = BoardGenerated`).
+
+**Done (2026-07-29):** `Assets/Resources/BoardData.csv` (the retail colours) deleted, along
+with its `.meta`. `BoardView`'s default resource name now points at `BoardGenerated`, so a
+freshly added BoardView loads the own palette rather than looking for the deleted file.
+
+**Remaining caveat (a decision, not a task):** the deleted file still exists in the repo's
+**git history**. Purging it there needs a history rewrite (git filter-repo / BFG) plus a
+force push. For an academic project, having it gone from HEAD, from every future build and
+from the deployed game may well be proportionate — but it is worth knowing it is not
+erased from the past.
 
 Original finding:
 §1 states the prototype must use *"identidade visual própria, nomenclaturas alternativas
@@ -76,16 +82,6 @@ One player dropping ends the match **for everyone** (back to lobby, scores lost)
 Also: if the **host** leaves, clients get no graceful "host left" screen — they are just
 disconnected.
 
-### 7. Room capacity is not enforced
-The host picks 3–10 in the lobby, but that value only drives the `x/y` display. The Relay
-session is created with a hard cap of 10, so a 7th player can still join a 6-player room.
-Enforcing it needs NGO connection approval (reject clients past the chosen capacity).
-
-### 8. Minimum-player rule is inconsistent
-The capacity dropdown starts at **3** (Hues & Cues needs 3+), and the scoring rules have a
-special case for exactly 3 players (cue giver scores double). But the host can still
-**start a match with 2 players**, which is outside the ruleset. Decide on the minimum and
-apply it in `MatchNetwork.StartMatchServer` and in the lobby's Start button gate.
 
 ---
 
@@ -152,6 +148,16 @@ they are genuine delivered scope and should be written up:
     scoreboard gone, nothing showed cumulative scores until the match ended, which is a
     problem when the win condition is "first to 25". The reveal score card now shows
     **`+3 (12)`**: points won this round plus the running total.
+
+### Player-count rules (2026-07-29)
+12. **Minimum-player rule was inconsistent** — the capacity dropdown starts at 3 and the
+    scoring rules have a 3-player special case, but the host could start with 2. There is
+    now a single `MatchNetwork.MinPlayersToStart` used by the server guard, the lobby's
+    Start button and `EveryoneReady`: **3 in builds, 2 in the editor** (`#if UNITY_EDITOR`)
+    so a match can still be exercised with two virtual players.
+13. **Room capacity was not enforced** — the host's 3–10 choice only drove the `x/y`
+    display, so an extra player could still join. The host now disconnects anyone who
+    connects beyond the chosen capacity.
 
 ### UI reuse pass (2026-07-28)
 7. **Board stayed visible on the final screen** — gameplay and final screens are now

@@ -92,11 +92,13 @@ namespace ColorGuesser.Net
             BuildPlayerList(roster);
             _hud.SetPlayers(_players);
 
-            // Room settings: only the host edits them; clients just see the synced values.
+            // Room settings: only the host edits them, but everyone - the host included -
+            // shows the synced values. Without this the host's widgets start on their own
+            // first option while the real settings say something else, and the two only
+            // agree once the host happens to touch a control.
             var settings = match.Settings;
             _hud.SetSettingsInteractable(match.IsHost);
-            if (!match.IsHost)
-                _hud.SetSettings(settings.maxPlayers, settings.targetScore, settings.guessSeconds);
+            _hud.SetSettings(settings.maxPlayers, settings.targetScore, settings.guessSeconds);
             _hud.SetPlayerCount(_players.Count, settings.maxPlayers);
 
             bool hasCode = !string.IsNullOrEmpty(session.JoinCode);
@@ -105,9 +107,10 @@ namespace ColorGuesser.Net
 
             if (match.IsHost)
             {
-                // Enabled only with 2+ players and everyone marked ready.
+                // Enabled only with enough players and everyone marked ready.
                 _hud.SetActionLabel("INICIAR PARTIDA");
-                _hud.SetActionInteractable(_players.Count >= 2 && match.EveryoneReady);
+                _hud.SetActionInteractable(_players.Count >= match.MinPlayersToStart &&
+                                           match.EveryoneReady);
             }
             else
             {
