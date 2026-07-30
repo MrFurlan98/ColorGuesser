@@ -53,6 +53,17 @@ namespace ColorGuesser.Game
         [Tooltip("Shown when a stat has no value yet (e.g. nobody scored).")]
         [SerializeField] private string emptyLabel = "--";
 
+        [Tooltip("Play again, before it has been pressed. Left empty it keeps whatever the " +
+                 "button already says in the prefab.")]
+        [SerializeField] private string playAgainLabel = "";
+
+        [Tooltip("Play again, after a non-host has pressed it: only the host can actually " +
+                 "restart, so this says the request was registered.")]
+        [SerializeField] private string waitingForHostLabel = "ESPERANDO HOST";
+
+        // Looked up rather than serialised, so the existing prefab needs no rewiring.
+        private TextMeshProUGUI _playAgainText;
+
         /// <summary>Raised when the host restarts the match.</summary>
         public event Action PlayAgainClicked;
 
@@ -61,7 +72,17 @@ namespace ColorGuesser.Game
 
         private void Awake()
         {
-            if (playAgainButton != null) playAgainButton.onClick.AddListener(() => PlayAgainClicked?.Invoke());
+            if (playAgainButton != null)
+            {
+                playAgainButton.onClick.AddListener(() => PlayAgainClicked?.Invoke());
+                // Include inactive children: the panel starts hidden.
+                _playAgainText = playAgainButton.GetComponentInChildren<TextMeshProUGUI>(true);
+
+                // Default to the prefab's own wording, so restoring it after "waiting"
+                // cannot quietly restyle a button somebody laid out deliberately.
+                if (string.IsNullOrEmpty(playAgainLabel) && _playAgainText != null)
+                    playAgainLabel = _playAgainText.text;
+            }
             if (menuButton != null) menuButton.onClick.AddListener(() => MenuClicked?.Invoke());
         }
 
@@ -70,11 +91,23 @@ namespace ColorGuesser.Game
             if (gameObject.activeSelf != visible) gameObject.SetActive(visible);
         }
 
-        /// <summary>Only the host can restart, so the button is hidden for everyone else.</summary>
+        /// <summary>Shows or hides the play-again button entirely.</summary>
         public void SetPlayAgainVisible(bool visible)
         {
             if (playAgainButton != null && playAgainButton.gameObject.activeSelf != visible)
                 playAgainButton.gameObject.SetActive(visible);
+        }
+
+        /// <summary>
+        /// Everyone gets the button, but only the host's press restarts the match. A
+        /// non-host who has pressed it sees it settle into "waiting for the host", so the
+        /// press is visibly acknowledged instead of appearing to do nothing.
+        /// </summary>
+        public void SetPlayAgainWaiting(bool waiting)
+        {
+            if (playAgainButton != null) playAgainButton.interactable = !waiting;
+            if (_playAgainText != null)
+                _playAgainText.text = waiting ? waitingForHostLabel : playAgainLabel;
         }
 
         public void Show(MatchStatsInfo stats)

@@ -33,6 +33,7 @@ namespace ColorGuesser.Game
         private readonly List<RoundScoreInfo> _roundScores = new List<RoundScoreInfo>();
         private readonly List<FinalScoreInfo> _finalScores = new List<FinalScoreInfo>();
         private bool _votedNextRound;            // this client already pressed next
+        private bool _waitingForHost;            // non-host pressed play again on the end screen
 
         /// <summary>Raised when the player asks to go back to the main menu. The
         /// networking layer subscribes and leaves the session.</summary>
@@ -208,10 +209,22 @@ namespace ColorGuesser.Game
             _session.Send(new SubmitClueCommand { PlayerId = cue.Id, Word = _hud.ClueText });
         }
 
-        /// <summary>Host only: start a fresh match with the same players.</summary>
+        /// <summary>
+        /// Only the host can restart. Everyone else gets the button anyway, and pressing it
+        /// marks them as waiting - the restart is not theirs to make, but a button that
+        /// silently does nothing reads as broken.
+        /// </summary>
         private void OnPlayAgain()
         {
-            if (_session == null || !_session.IsHost) return;
+            if (_session == null) return;
+
+            if (!_session.IsHost)
+            {
+                _waitingForHost = true;
+                Refresh();
+                return;
+            }
+
             _session.RequestRestart(); // offline: rebuild locally; online: host rebuilds for all
         }
 
@@ -227,6 +240,7 @@ namespace ColorGuesser.Game
         {
             _pendingGuess = null;
             _votedNextRound = false;
+            _waitingForHost = false;
 
             _hud.SetVisible(false);
             _hud.ShowGameplay(false);
@@ -345,7 +359,8 @@ namespace ColorGuesser.Game
             }
 
             _hud.ShowFinalScreen(true); // parent first, so its panels can be seen
-            _hud.ShowStats(BuildStats(match), _session.IsHost);
+            // The host's button always acts; everyone else's settles once pressed.
+            _hud.ShowStats(BuildStats(match), !_session.IsHost && _waitingForHost);
 
             _finalScores.Clear();
             var ranked = match.Players.OrderByDescending(p => p.Score).ToList();

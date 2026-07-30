@@ -245,12 +245,16 @@ namespace ColorGuesser.Game
             if (finalScorePanel != null) finalScorePanel.SetVisible(false);
         }
 
-        /// <summary>Shows the end-of-match stats panel (Play Again is host only).</summary>
-        public void ShowStats(MatchStatsInfo stats, bool isHost)
+        /// <summary>
+        /// Shows the end-of-match stats panel. Everyone gets the Play Again button; only
+        /// the host's press restarts, so a non-host who has pressed it sees it waiting.
+        /// </summary>
+        public void ShowStats(MatchStatsInfo stats, bool waitingForHost)
         {
             if (statsPanel == null) return;
             statsPanel.SetVisible(true);
-            statsPanel.SetPlayAgainVisible(isHost);
+            statsPanel.SetPlayAgainVisible(true);
+            statsPanel.SetPlayAgainWaiting(waitingForHost);
             statsPanel.Show(stats);
         }
 

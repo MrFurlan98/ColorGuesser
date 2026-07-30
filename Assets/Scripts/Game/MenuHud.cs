@@ -29,6 +29,14 @@ namespace ColorGuesser.Game
         [SerializeField] private Button joinButton;
         [SerializeField] private TMP_InputField joinCodeInput;
 
+        [Header("Guest mode")]
+        [Tooltip("Optional. When ON the player plays as a guest: nothing is stored and no " +
+                 "statistics are kept. Leave unassigned to always store data.")]
+        [SerializeField] private Toggle guestToggle;
+        [Tooltip("Optional. States plainly whether progress is being saved, so the guest " +
+                 "choice is visible rather than implied by a checkbox.")]
+        [SerializeField] private TextMeshProUGUI storageStatusText;
+
         [Header("Notice")]
         [Tooltip("Optional. Explains why the player was dropped from a room (host closed " +
                  "it, connection lost, room full). Hidden when there is nothing to say.")]
@@ -39,11 +47,15 @@ namespace ColorGuesser.Game
         public event Action<string> NicknameChanged;
         public event Action<int> ColorChanged;
 
+        /// <summary>Raised with true when the player chooses to play as a guest.</summary>
+        public event Action<bool> GuestModeChanged;
+
         private void Awake()
         {
             if (hostButton != null) hostButton.onClick.AddListener(() => HostClicked?.Invoke());
             if (joinButton != null) joinButton.onClick.AddListener(() => JoinClicked?.Invoke());
             if (nicknameInput != null) nicknameInput.onValueChanged.AddListener(v => NicknameChanged?.Invoke(v));
+            if (guestToggle != null) guestToggle.onValueChanged.AddListener(v => GuestModeChanged?.Invoke(v));
             if (joinCodeInput != null) joinCodeInput.onSubmit.AddListener(_ => JoinClicked?.Invoke());
 
             // "Join Game" reveals the code field instead of joining immediately.
@@ -70,6 +82,25 @@ namespace ColorGuesser.Game
         public string JoinCode => joinCodeInput != null ? joinCodeInput.text : string.Empty;
 
         public void SetNickname(string nickname) { if (nicknameInput != null) nicknameInput.text = nickname; }
+
+        /// <summary>Reflects the stored guest choice without re-firing the event.</summary>
+        public void SetGuestMode(bool guest)
+        {
+            if (guestToggle != null) guestToggle.SetIsOnWithoutNotify(guest);
+        }
+
+        /// <summary>
+        /// Says whether this player's results will be kept. Deliberately explicit: the
+        /// guest choice only means something if the player can see its effect.
+        /// </summary>
+        public void SetStorageStatus(bool canStore)
+        {
+            if (storageStatusText == null) return;
+
+            storageStatusText.text = canStore
+                ? "Seu progresso será salvo nesta conta."
+                : "Modo convidado — nada será salvo.";
+        }
 
         /// <summary>Shows why the player left a room, or hides the line when empty.</summary>
         public void SetNotice(string message)

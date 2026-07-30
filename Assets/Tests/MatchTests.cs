@@ -160,10 +160,142 @@ namespace ColorGuesser.Tests
 
             m.DropPlayer(cue.Id);
 
-            Assert.AreNotEqual(cue.Id, m.CueMaster.Id, "the turn skips a player who left");
-            Assert.IsTrue(m.CueMaster.IsConnected);
             Assert.AreNotEqual(MatchPhase.CueMasterClue1, m.Phase,
                 "their clue is never coming, so the phase moves on");
+            Assert.AreEqual(cue.Id, m.CueMaster.Id,
+                "but the seat stays theirs for this round - reassigning it mid-round would " +
+                "turn a guesser into the cue master and lose their cubes");
+            Assert.IsFalse(m.Guessers.Contains(cue), "they are still not a guesser");
+        }
+
+        [Test]
+        public void TheCueMasterIsFixedForTheRoundSoGuessersKeepTheirPoints()
+        {
+            // The bug this pins down: with the cue master computed on demand, dropping them
+            // mid-round promoted a guesser into the role, which both ended the phase early
+            // and threw away the cubes that guesser had already locked in.
+            var m = NewMatch();
+            m.StartMatch();
+            var cue = m.CueMaster;
+            var guessers = m.Guessers.ToList();
+
+            m.SubmitClue(cue.Id, "a");
+            foreach (var g in guessers) m.SubmitGuess(g.Id, m.Target);
+            m.SubmitClue(cue.Id, "b");
+            m.SubmitGuess(guessers[0].Id, m.Target);   // one guesser is in
+
+            m.DropPlayer(cue.Id);
+
+            Assert.AreEqual(MatchPhase.Guessing2, m.Phase,
+                "the round still owes the other guesser their turn");
+            Assert.AreEqual(cue.Id, m.CueMaster.Id);
+
+            m.SubmitGuess(guessers[1].Id, m.Target);
+            Assert.AreEqual(MatchPhase.Reveal, m.Phase);
+
+            Assert.AreEqual(6, guessers[0].Score, "two exact cubes still score, cue master or not");
+            Assert.AreEqual(6, guessers[1].Score);
+            Assert.AreEqual(8, cue.Score, "the clue was theirs, so the cubes it earned are too");
+        }
+
+        // ----- Players coming back --------------------------------------------------
+
+        [Test]
+        public void ARejoiningPlayerGetsTheirSeatAndScoreBack()
+        {
+            var m = NewMatch();
+            m.StartMatch();
+            PlayPerfectRound(m);              // everyone scores
+            m.NextRound();
+
+            var victim = m.Guessers.First();
+            int scoreBefore = victim.Score;
+            Assert.IsTrue(m.DropPlayer(victim.Id));
+            Assert.AreEqual(2, m.ConnectedCount);
+
+            Assert.IsTrue(m.RejoinPlayer(victim.Id));
+
+            Assert.IsTrue(victim.IsConnected);
+            Assert.AreEqual(scoreBefore, victim.Score, "they come back to the score they left with");
+            Assert.IsTrue(m.Guessers.Contains(victim), "and the round waits for them again");
+            Assert.AreEqual(3, m.ConnectedCount);
+        }
+
+        [Test]
+        public void RejoiningDoesNotTakeTheCueMasterRoleBack()
+        {
+            var m = NewMatch();
+            m.StartMatch();
+            var cue = m.CueMaster;
+
+            m.DropPlayer(cue.Id);             // phase moves on, seat stays theirs
+            m.RejoinPlayer(cue.Id);
+
+            Assert.AreEqual(cue.Id, m.CueMaster.Id, "they never lost the seat, so nothing changes");
+            Assert.IsFalse(m.Guessers.Contains(cue));
+        }
+
+        [Test]
+        public void RejoiningMidRoundMakesTheRoundWaitForThatGuessAgain()
+        {
+            var m = NewMatch();
+            m.StartMatch();
+            m.SubmitClue(m.CueMaster.Id, "quente");
+            var guessers = m.Guessers.ToList();
+
+            // One guesser answers, the other leaves - which completes the phase.
+            m.SubmitGuess(guessers[0].Id, m.Target);
+            m.DropPlayer(guessers[1].Id);
+            Assert.AreEqual(MatchPhase.CueMasterClue2, m.Phase);
+
+            // They come back for the second guessing phase and are owed their turn.
+            m.RejoinPlayer(guessers[1].Id);
+            m.SubmitClue(m.CueMaster.Id, "vermelho");
+            Assert.AreEqual(MatchPhase.Guessing2, m.Phase);
+
+            m.SubmitGuess(guessers[0].Id, m.Target);
+            Assert.AreEqual(MatchPhase.Guessing2, m.Phase, "still waiting for the player who returned");
+
+            Assert.IsTrue(m.SubmitGuess(guessers[1].Id, m.Target), "and they are allowed to guess");
+            Assert.AreEqual(MatchPhase.Reveal, m.Phase);
+        }
+
+        [Test]
+        public void TheRotationSkipsAnAbsentPlayerAndTakesThemBackOnceTheyReturn()
+        {
+            var m = NewMatch(targetScore: 500); // high, so the match cannot end mid-loop
+            m.StartMatch();
+
+            // Second in the list, so the rotation would hand them round 2 - which makes
+            // the skip observable rather than something that was going to happen anyway.
+            var absent = m.Players[1];
+            m.DropPlayer(absent.Id);
+
+            PlayPerfectRound(m); m.NextRound();                       // -> round 2
+            Assert.AreNotEqual(absent.Id, m.CueMaster.Id, "round 2 was theirs; it must skip them");
+
+            m.RejoinPlayer(absent.Id);
+
+            // The turn rotates by round number, so theirs comes round again at round 5.
+            PlayPerfectRound(m); m.NextRound();                       // -> round 3
+            PlayPerfectRound(m); m.NextRound();                       // -> round 4
+            PlayPerfectRound(m); m.NextRound();                       // -> round 5
+            Assert.AreEqual(absent.Id, m.CueMaster.Id, "back in the rotation");
+        }
+
+        [Test]
+        public void RejoiningAnUnknownOrPresentPlayerDoesNothing()
+        {
+            var m = NewMatch();
+            m.StartMatch();
+            var victim = m.Guessers.First();
+
+            Assert.IsFalse(m.RejoinPlayer(victim.Id), "they never left");
+            Assert.IsFalse(m.RejoinPlayer("nobody"));
+
+            m.DropPlayer(victim.Id);
+            Assert.IsTrue(m.RejoinPlayer(victim.Id));
+            Assert.IsFalse(m.RejoinPlayer(victim.Id), "rejoining twice is a no-op");
         }
 
         [Test]

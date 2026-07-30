@@ -28,6 +28,8 @@ namespace ColorGuesser.Net
 
         public const string NicknameKey = "nickname";
         public const string ColorKey = "colorIndex";
+        public const string GuestKey = "guestMode";
+        public const string ProfileKey = "profileId";
 
         private string _status = "Not connected";
         private string _nickname = "";
@@ -61,6 +63,30 @@ namespace ColorGuesser.Net
 
         /// <summary>Raised whenever the connection status/session changes.</summary>
         public event Action Changed;
+
+        /// <summary>
+        /// Play as a guest: sign in with a throwaway account so nothing is kept between
+        /// sessions, and skip saving any history or statistics. Off means the player keeps
+        /// a stable account on this device and their stats are stored.
+        /// </summary>
+        public bool GuestMode
+        {
+            get => PlayerPrefs.GetInt(GuestKey, 0) == 1;
+            set { PlayerPrefs.SetInt(GuestKey, value ? 1 : 0); Changed?.Invoke(); }
+        }
+
+        /// <summary>
+        /// This player's Authentication id: stable across sessions unless they are a
+        /// guest. Used as the player's identity in a match and as the Cloud Save key.
+        /// Empty until signed in.
+        /// </summary>
+        public string PlayerId =>
+            AuthenticationService.Instance != null && AuthenticationService.Instance.IsSignedIn
+                ? AuthenticationService.Instance.PlayerId
+                : "";
+
+        /// <summary>False for guests, who asked not to have their data stored.</summary>
+        public bool CanStoreData => !GuestMode;
 
         /// <summary>
         /// Why the player was last dropped out of a room, for the menu to show - the host
@@ -114,8 +140,10 @@ namespace ColorGuesser.Net
                 ? "A conexão com a sala foi perdida."
                 : reason;
 
-            _session = null;
             SetStatus("Not connected");
+            // Losing the connection is not the same as leaving: without this we stay a
+            // member of the room on the service, and the next join is refused.
+            ReleaseSessionQuietly();
         }
 
         private void SetStatus(string s) { _status = s; Changed?.Invoke(); }
@@ -136,20 +164,66 @@ namespace ColorGuesser.Net
             transport.UseWebSockets = RelayProtocol.Default == RelayProtocol.WSS;
         }
 
+        private bool _signedInAsGuest;
+
         private async Task EnsureSignedInAsync()
         {
             if (UnityServices.State != ServicesInitializationState.Initialized)
                 await UnityServices.InitializeAsync();
 
-            if (!AuthenticationService.Instance.IsSignedIn)
-            {
-                // A unique profile per instance keeps Multiplayer Play Mode virtual
-                // players (and repeat runs) from sharing one anonymous account.
-                try { AuthenticationService.Instance.SwitchProfile("p" + Guid.NewGuid().ToString("N").Substring(0, 8)); }
-                catch { /* SwitchProfile is best-effort */ }
+            var auth = AuthenticationService.Instance;
+            bool guest = GuestMode;
 
-                await AuthenticationService.Instance.SignInAnonymouslyAsync();
+            // Already signed in, but under the other kind of account: start over, or the
+            // player would keep the identity they just opted out of (or into).
+            if (auth.IsSignedIn && _signedInAsGuest != guest)
+                auth.SignOut();
+
+            if (auth.IsSignedIn) return;
+
+            // The profile decides WHICH cached anonymous account is used. A guest gets a
+            // fresh one every time, so nothing of theirs is ever reused; everyone else
+            // reuses this device's profile, which is what makes their stats persist.
+            try { auth.SwitchProfile(guest ? NewGuestProfile() : StableProfile()); }
+            catch (Exception e) { Debug.LogWarning("Could not switch profile: " + e.Message); }
+
+            await auth.SignInAnonymouslyAsync();
+            _signedInAsGuest = guest;
+
+            // Anonymous accounts have no visible name, so without this there is no way to
+            // tell which row in the Cloud Save dashboard belongs to this player.
+            Debug.Log($"Signed in {(guest ? "as guest" : "with the saved profile")}. " +
+                      $"PlayerId: {auth.PlayerId}");
+        }
+
+        private static string NewGuestProfile() =>
+            "guest" + Guid.NewGuid().ToString("N").Substring(0, 8);
+
+        /// <summary>
+        /// A profile name kept on this device, so signing in again lands on the same
+        /// anonymous account (and therefore the same saved data).
+        ///
+        /// In the editor it is kept per process instead. Multiplayer Play Mode virtual
+        /// players share this machine's PlayerPrefs, so one stored profile would sign every
+        /// instance into the SAME account - and they would then be one player as far as the
+        /// services are concerned: the second to join a room is refused because that player
+        /// is already in it. A process-scoped name keeps them distinct while staying stable
+        /// across play mode, which is what testing reconnection needs.
+        /// </summary>
+        private static string StableProfile()
+        {
+#if UNITY_EDITOR
+            return "editor" + System.Diagnostics.Process.GetCurrentProcess().Id;
+#else
+            string id = PlayerPrefs.GetString(ProfileKey, "");
+            if (string.IsNullOrEmpty(id))
+            {
+                id = "player" + Guid.NewGuid().ToString("N").Substring(0, 8);
+                PlayerPrefs.SetString(ProfileKey, id);
+                PlayerPrefs.Save();
             }
+            return id;
+#endif
         }
 
         public async void Host()
@@ -197,13 +271,47 @@ namespace ColorGuesser.Net
 
         public async void Leave()
         {
-            _leaving = true;   // so OnClientDisconnect does not report this as a fault
+            if (_busy) return;
+            _busy = true;
             Notice = "";
-            try { if (_session != null) await _session.LeaveAsync(); }
-            catch (Exception e) { Debug.LogException(e); }
-            _session = null;
-            _leaving = false;
-            SetStatus("Not connected");
+            try { await ReleaseSessionAsync(); }
+            finally { _busy = false; SetStatus("Not connected"); }
+        }
+
+        /// <summary>
+        /// Gives the session up properly. Both halves matter: dropping our reference without
+        /// telling the service still leaves us registered as a member of that room, and the
+        /// next attempt to join is then refused because that player is already in it.
+        /// Safe to call when there is nothing to release.
+        /// </summary>
+        private async Task ReleaseSessionAsync()
+        {
+            var session = _session;
+            _session = null;                    // nobody should see a room we are abandoning
+            if (session == null) return;
+
+            _leaving = true;   // so the disconnect this causes is not reported as a fault
+            try { await session.LeaveAsync(); }
+            catch (Exception e)
+            {
+                // Being gone already - the host closed the room, or the connection dropped -
+                // is normal here, not a failure worth showing the player.
+                Debug.LogWarning("Leaving the session did not complete cleanly: " + e.Message);
+            }
+            finally
+            {
+                _leaving = false;
+                var manager = NetworkManager.Singleton;
+                if (manager != null && manager.IsListening) manager.Shutdown();
+            }
+        }
+
+        /// <summary>Releases the session after the room ended without us.</summary>
+        private async void ReleaseSessionQuietly()
+        {
+            _busy = true;
+            try { await ReleaseSessionAsync(); }
+            finally { _busy = false; Changed?.Invoke(); }
         }
 
     }

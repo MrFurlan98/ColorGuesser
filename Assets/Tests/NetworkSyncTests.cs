@@ -152,6 +152,49 @@ namespace ColorGuesser.Tests
         }
 
         [Test]
+        public void ClientAgreesWithTheHostAboutAnAbsentCueMaster()
+        {
+            // The cue master keeps the seat for the round even after dropping out. The
+            // client must not re-derive it from presence, or it would promote the next
+            // player and show everyone the wrong role panels for the rest of the round.
+            var host = NewMatch();
+            host.StartMatch();
+            var cue = host.CueMaster;
+            host.DropPlayer(cue.Id);
+
+            var client = RoundTrip(host);
+
+            Assert.AreEqual(cue.Id, client.CueMaster.Id);
+            Assert.IsFalse(client.CueMaster.IsConnected, "and the client knows they are away");
+            CollectionAssert.AreEquivalent(
+                host.Guessers.Select(p => p.Id).ToList(),
+                client.Guessers.Select(p => p.Id).ToList());
+        }
+
+        [Test]
+        public void PresenceComesBackOverTheWireWhenAPlayerReconnects()
+        {
+            var host = NewMatch();
+            host.StartMatch();
+            PlayRound(host);
+            host.NextRound();
+
+            var away = host.Guessers.First();
+            host.DropPlayer(away.Id);
+            var client = RoundTrip(host);
+            Assert.IsFalse(client.Players.First(p => p.Id == away.Id).IsConnected);
+            Assert.IsFalse(client.Guessers.Any(p => p.Id == away.Id));
+
+            host.RejoinPlayer(away.Id);
+            client = RoundTrip(host);
+
+            var seat = client.Players.First(p => p.Id == away.Id);
+            Assert.IsTrue(seat.IsConnected, "the client sees them return");
+            Assert.AreEqual(away.Score, seat.Score, "with the score they left with");
+            Assert.IsTrue(client.Guessers.Any(p => p.Id == away.Id), "and back in the guess count");
+        }
+
+        [Test]
         public void EmptySnapshotPutsTheClientBackInTheLobby()
         {
             var host = NewMatch();

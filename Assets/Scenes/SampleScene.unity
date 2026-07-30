@@ -591,12 +591,14 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   board: {fileID: 522753105}
   matchView: {fileID: 1672300260}
-  session: {fileID: 0}
+  session: {fileID: 1942437714}
+  statsStore: {fileID: 1942437715}
   defaultSettings:
     maxPlayers: 6
     targetScore: 25
     guessSeconds: 60
   revealSeconds: 15
+  minPlayersToStart: 3
 --- !u!1 &1942437709
 GameObject:
   m_ObjectHideFlags: 0
@@ -610,6 +612,7 @@ GameObject:
   - component: {fileID: 1942437711}
   - component: {fileID: 1942437710}
   - component: {fileID: 1942437714}
+  - component: {fileID: 1942437715}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -730,6 +733,19 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxPlayers: 4
+--- !u!114 &1942437715
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1942437709}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d8a93473a7755ee4e8d6ae1118e9ba77, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  session: {fileID: 1942437714}
 --- !u!1 &2086875736
 GameObject:
   m_ObjectHideFlags: 0

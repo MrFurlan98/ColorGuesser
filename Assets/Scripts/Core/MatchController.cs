@@ -35,6 +35,9 @@ namespace ColorGuesser.Core
         private DateTime _startedAtUtc;
         private DateTime? _finishedAtUtc;
 
+        // Whose turn it is to give clues, fixed for the duration of the round.
+        private string _cueMasterId;
+
         public IReadOnlyList<Player> Players => _players;
 
         /// <summary>Points needed to win; rounds continue until a player reaches it.</summary>
@@ -70,31 +73,45 @@ namespace ColorGuesser.Core
         /// <summary>True once any player has reached the target score.</summary>
         public bool HasWinner => _players.Any(p => p.Score >= TargetScore);
 
-        /// <summary>The player giving clues this round (rotates each round).</summary>
         /// <summary>
-        /// The player giving clues this round. The turn rotates by round number, skipping
-        /// anyone who has dropped out so a disconnected player cannot stall the round.
+        /// The player giving clues this round. Decided once, when the round begins, and
+        /// then fixed for the whole round.
+        ///
+        /// It has to be fixed rather than computed on demand: who the cue master is decides
+        /// who counts as a guesser, and therefore whose cubes score. If it could change
+        /// mid-round - which is exactly what happens when someone drops out or comes back -
+        /// a player could give both clues and then be scored as a guesser, or earn cubes
+        /// and have them credited to nobody.
         /// </summary>
-        public Player CueMaster
-        {
-            get
-            {
-                if (Phase == MatchPhase.NotStarted) return null;
+        public Player CueMaster =>
+            _cueMasterId == null ? null : _players.FirstOrDefault(p => p.Id == _cueMasterId);
 
-                int start = (RoundNumber - 1) % _players.Count;
-                for (int step = 0; step < _players.Count; step++)
-                {
-                    var candidate = _players[(start + step) % _players.Count];
-                    if (candidate.IsConnected) return candidate;
-                }
-                return _players[start]; // everyone has dropped; keep a stable answer
+        /// <summary>
+        /// Picks the cue master for the round about to start: the rotation by round number,
+        /// stepping past anyone who has dropped out so an absent player cannot be handed
+        /// the turn.
+        /// </summary>
+        private void ChooseCueMaster()
+        {
+            int start = (RoundNumber - 1) % _players.Count;
+            for (int step = 0; step < _players.Count; step++)
+            {
+                var candidate = _players[(start + step) % _players.Count];
+                if (candidate.IsConnected) { _cueMasterId = candidate.Id; return; }
             }
+            _cueMasterId = _players[start].Id; // everyone has dropped; keep a stable answer
         }
 
         /// <summary>Everyone except the cue master who is still connected, i.e. the
         /// players the round actually waits for.</summary>
-        public IEnumerable<Player> Guessers =>
-            _players.Where(p => p != CueMaster && p.IsConnected);
+        public IEnumerable<Player> Guessers
+        {
+            get
+            {
+                var cue = CueMaster;   // resolved once, not per player
+                return _players.Where(p => p != cue && p.IsConnected);
+            }
+        }
 
         public void StartMatch()
         {
@@ -108,6 +125,7 @@ namespace ColorGuesser.Core
         private void BeginRound()
         {
             RoundNumber++;
+            ChooseCueMaster();    // fixed for this round; presence is read once, here
             _guess1.Clear();
             _guess2.Clear();
             _roundScores.Clear(); // last round's points must not leak into this one
@@ -197,6 +215,11 @@ namespace ColorGuesser.Core
         /// Marks a player as having dropped out. They keep their score and stay on the
         /// scoreboard, but the round stops waiting for them: if it was their turn to give
         /// a clue, or they were the last guess the phase needed, play moves on.
+        ///
+        /// They keep the cue master's seat for the rest of the round if it was theirs -
+        /// the clue they already gave, and the cubes it earned, still belong to them - and
+        /// the rotation passes them over from the next round on.
+        ///
         /// Returns false if the id is unknown or they had already dropped.
         /// </summary>
         public bool DropPlayer(string playerId)
@@ -209,7 +232,7 @@ namespace ColorGuesser.Core
 
             switch (Phase)
             {
-                // Their clue is never coming, so hand the round to the next cue master.
+                // Their clue is never coming, so stop waiting for it.
                 case MatchPhase.CueMasterClue1:
                 case MatchPhase.CueMasterClue2:
                     if (wasCueMaster) ForceAdvancePhase();
@@ -217,13 +240,33 @@ namespace ColorGuesser.Core
 
                 // The round may now have every guess it is still waiting for.
                 case MatchPhase.Guessing1:
-                    if (wasCueMaster || _guess1.Count >= Guessers.Count()) ForceAdvancePhase();
+                    if (_guess1.Count >= Guessers.Count()) ForceAdvancePhase();
                     break;
                 case MatchPhase.Guessing2:
-                    if (wasCueMaster || _guess2.Count >= Guessers.Count()) ForceAdvancePhase();
+                    if (_guess2.Count >= Guessers.Count()) ForceAdvancePhase();
                     break;
             }
 
+            StateChanged?.Invoke();
+            return true;
+        }
+
+        /// <summary>
+        /// Puts a player who had dropped out back in their seat: same id, same score, same
+        /// place in the cue master rotation. The round starts waiting for their guess again
+        /// if it is still open and they had not already locked one in.
+        ///
+        /// Deliberately does not touch the cue master, so returning mid-round cannot take
+        /// the turn back off whoever is holding it.
+        ///
+        /// Returns false if the id is unknown or they were never away.
+        /// </summary>
+        public bool RejoinPlayer(string playerId)
+        {
+            var player = _players.FirstOrDefault(p => p.Id == playerId);
+            if (player == null || player.IsConnected) return false;
+
+            player.IsConnected = true;
             StateChanged?.Invoke();
             return true;
         }
@@ -250,11 +293,16 @@ namespace ColorGuesser.Core
                 _roundScores[guesser.Id] = points;
             }
 
-            // The cue master scores for every cube that landed in the scoring rings.
-            var allCubes = _guess1.Values.Concat(_guess2.Values);
-            int cuePoints = ScoringService.PointsForCueGiver(Target, allCubes, _players.Count);
-            CueMaster.Score += cuePoints;
-            _roundScores[CueMaster.Id] = cuePoints;
+            // The cue master scores for every cube that landed in the scoring rings. They
+            // are credited even if they dropped out mid-round: the clue was theirs.
+            var cueMaster = CueMaster;
+            if (cueMaster != null)
+            {
+                var allCubes = _guess1.Values.Concat(_guess2.Values);
+                int cuePoints = ScoringService.PointsForCueGiver(Target, allCubes, _players.Count);
+                cueMaster.Score += cuePoints;
+                _roundScores[cueMaster.Id] = cuePoints;
+            }
 
             // Keep the round for the end-of-match stats.
             int exact = 0;

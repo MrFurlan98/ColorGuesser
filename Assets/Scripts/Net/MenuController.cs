@@ -31,11 +31,13 @@ namespace ColorGuesser.Net
             _hud.SetNickname(session.Nickname);
             _hud.ApplyPaletteColors();                 // tint the 10 swatches from PlayerPalette
             _hud.SetSelectedColor(session.ColorIndex); // restore last pick
+            _hud.SetGuestMode(session.GuestMode);
 
             _hud.HostClicked += OnHost;
             _hud.JoinClicked += OnJoin;
             _hud.NicknameChanged += OnNicknameChanged;
             _hud.ColorChanged += OnColorChanged;
+            _hud.GuestModeChanged += OnGuestModeChanged;
             session.Changed += Refresh;
             match.LobbyChanged += Refresh; // fires on connect and on despawn (leave)
 
@@ -52,6 +54,7 @@ namespace ColorGuesser.Net
                 _hud.JoinClicked -= OnJoin;
                 _hud.NicknameChanged -= OnNicknameChanged;
                 _hud.ColorChanged -= OnColorChanged;
+                _hud.GuestModeChanged -= OnGuestModeChanged;
             }
         }
 
@@ -59,6 +62,9 @@ namespace ColorGuesser.Net
         private void OnJoin() => session.Join(_hud.JoinCode);
         private void OnNicknameChanged(string nickname) => session.Nickname = nickname;
         private void OnColorChanged(int colorIndex) => session.ColorIndex = colorIndex;
+
+        /// <summary>Guests get a throwaway account and nothing of theirs is stored.</summary>
+        private void OnGuestModeChanged(bool guest) => session.GuestMode = guest;
 
         private void Refresh()
         {
@@ -68,6 +74,7 @@ namespace ColorGuesser.Net
             if (!showMenu) return;
 
             _hud.SetInteractable(!session.IsBusy);
+            _hud.SetStorageStatus(session.CanStoreData);
             // Explains a room we did not leave on purpose: host closed it, connection
             // lost, or the room was full.
             _hud.SetNotice(session.Notice);
