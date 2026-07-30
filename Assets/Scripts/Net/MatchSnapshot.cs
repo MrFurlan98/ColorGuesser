@@ -29,6 +29,7 @@ namespace ColorGuesser.Net
         public int[] playerScores;
         public int[] playerColors;
         public int[] playerRoundScores; // points earned in the round just revealed
+        public bool[] playerConnected;  // false for players who dropped out
 
         public string[] g1Ids;
         public int[] g1Cols;
@@ -65,6 +66,7 @@ namespace ColorGuesser.Net
                 playerColors = players.Select(p => p.ColorIndex).ToArray(),
                 playerRoundScores = players
                     .Select(p => m.RoundScores.TryGetValue(p.Id, out var s) ? s : 0).ToArray(),
+                playerConnected = players.Select(p => p.IsConnected).ToArray(),
                 cueMasterIndex = m.CueMaster == null ? -1 : IndexOf(players, m.CueMaster.Id),
             };
             CaptureGuesses(m.FirstGuesses, out snap.g1Ids, out snap.g1Cols, out snap.g1Rows);
@@ -123,7 +125,10 @@ namespace ColorGuesser.Net
 
         public IReadOnlyList<Player> Players => _players;
         public Player CueMaster => (_cueIndex >= 0 && _cueIndex < _players.Count) ? _players[_cueIndex] : null;
-        public IEnumerable<Player> Guessers => _players.Where(p => p != CueMaster);
+        // Filtered the same way as MatchController.Guessers, so the guess panel and its
+        // "x/y confirmed" counter agree with what the host is waiting for.
+        public IEnumerable<Player> Guessers =>
+            _players.Where(p => p != CueMaster && p.IsConnected);
         public IReadOnlyDictionary<string, GridCoordinate> FirstGuesses => _g1;
         public IReadOnlyDictionary<string, GridCoordinate> SecondGuesses => _g2;
         public IReadOnlyDictionary<string, int> RoundScores => _roundScores;
@@ -146,7 +151,12 @@ namespace ColorGuesser.Net
             for (int i = 0; i < count; i++)
             {
                 int colorIndex = (s.playerColors != null && i < s.playerColors.Length) ? s.playerColors[i] : 0;
-                _players.Add(new Player(s.playerIds[i], s.playerNames[i], colorIndex) { Score = s.playerScores[i] });
+                bool connected = s.playerConnected == null || i >= s.playerConnected.Length || s.playerConnected[i];
+                _players.Add(new Player(s.playerIds[i], s.playerNames[i], colorIndex)
+                {
+                    Score = s.playerScores[i],
+                    IsConnected = connected,
+                });
                 if (s.playerRoundScores != null && i < s.playerRoundScores.Length)
                     _roundScores[s.playerIds[i]] = s.playerRoundScores[i];
             }

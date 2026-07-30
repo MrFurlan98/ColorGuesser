@@ -17,7 +17,8 @@ namespace ColorGuesser.Net
     /// NGO host/client through Relay), so our MatchNetwork flow is unchanged - real
     /// remote play and WebGL now work through the same seam.
     ///
-    /// This is a temporary immediate-mode panel; the polished lobby comes later.
+    /// It also watches for losing the connection, so the menu can explain what happened
+    /// instead of the player simply finding themselves back at the start.
     /// </summary>
     public class SessionBootstrap : MonoBehaviour
     {
@@ -61,7 +62,61 @@ namespace ColorGuesser.Net
         /// <summary>Raised whenever the connection status/session changes.</summary>
         public event Action Changed;
 
+        /// <summary>
+        /// Why the player was last dropped out of a room, for the menu to show - the host
+        /// closing the session, a lost connection, or a full room. Empty when they left on
+        /// purpose. Cleared once they connect again.
+        /// </summary>
+        public string Notice { get; private set; } = "";
+
+        private bool _leaving;   // true while WE are the ones ending the session
+
         private void Awake() => _nickname = PlayerPrefs.GetString(NicknameKey, "Player");
+
+        private bool _subscribed;
+
+        // This component lives on the NetworkManager object, so the singleton may not be
+        // assigned yet in OnEnable - hence the second attempt in Start.
+        private void OnEnable() => SubscribeToDisconnects();
+        private void Start() => SubscribeToDisconnects();
+
+        private void SubscribeToDisconnects()
+        {
+            if (_subscribed) return;
+            var manager = NetworkManager.Singleton;
+            if (manager == null) return;
+
+            manager.OnClientDisconnectCallback += OnClientDisconnect;
+            _subscribed = true;
+        }
+
+        private void OnDisable()
+        {
+            if (!_subscribed) return;
+            var manager = NetworkManager.Singleton;
+            if (manager != null) manager.OnClientDisconnectCallback -= OnClientDisconnect;
+            _subscribed = false;
+        }
+
+        /// <summary>
+        /// Fires on this peer when it loses the connection. If we did not ask to leave,
+        /// the room ended without us - most often because the host closed it, which a
+        /// host-authoritative session cannot survive.
+        /// </summary>
+        private void OnClientDisconnect(ulong clientId)
+        {
+            var manager = NetworkManager.Singleton;
+            if (manager == null || _leaving) return;
+            if (manager.IsServer || clientId != manager.LocalClientId) return; // someone else left
+
+            string reason = manager.DisconnectReason;
+            Notice = string.IsNullOrWhiteSpace(reason)
+                ? "A conexão com a sala foi perdida."
+                : reason;
+
+            _session = null;
+            SetStatus("Not connected");
+        }
 
         private void SetStatus(string s) { _status = s; Changed?.Invoke(); }
 
@@ -101,6 +156,7 @@ namespace ColorGuesser.Net
         {
             if (_busy || InSession) return;
             _busy = true;
+            Notice = "";
             SetStatus("Creating session…");
             try
             {
@@ -122,6 +178,7 @@ namespace ColorGuesser.Net
         {
             if (_busy || InSession || string.IsNullOrWhiteSpace(code)) return;
             _busy = true;
+            Notice = "";
             SetStatus("Joining…");
             try
             {
@@ -140,9 +197,12 @@ namespace ColorGuesser.Net
 
         public async void Leave()
         {
+            _leaving = true;   // so OnClientDisconnect does not report this as a fault
+            Notice = "";
             try { if (_session != null) await _session.LeaveAsync(); }
             catch (Exception e) { Debug.LogException(e); }
             _session = null;
+            _leaving = false;
             SetStatus("Not connected");
         }
 

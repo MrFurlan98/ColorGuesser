@@ -71,11 +71,30 @@ namespace ColorGuesser.Core
         public bool HasWinner => _players.Any(p => p.Score >= TargetScore);
 
         /// <summary>The player giving clues this round (rotates each round).</summary>
-        public Player CueMaster =>
-            Phase == MatchPhase.NotStarted ? null : _players[(RoundNumber - 1) % _players.Count];
+        /// <summary>
+        /// The player giving clues this round. The turn rotates by round number, skipping
+        /// anyone who has dropped out so a disconnected player cannot stall the round.
+        /// </summary>
+        public Player CueMaster
+        {
+            get
+            {
+                if (Phase == MatchPhase.NotStarted) return null;
 
-        /// <summary>Everyone except the cue master, i.e. the players who guess.</summary>
-        public IEnumerable<Player> Guessers => _players.Where(p => p != CueMaster);
+                int start = (RoundNumber - 1) % _players.Count;
+                for (int step = 0; step < _players.Count; step++)
+                {
+                    var candidate = _players[(start + step) % _players.Count];
+                    if (candidate.IsConnected) return candidate;
+                }
+                return _players[start]; // everyone has dropped; keep a stable answer
+            }
+        }
+
+        /// <summary>Everyone except the cue master who is still connected, i.e. the
+        /// players the round actually waits for.</summary>
+        public IEnumerable<Player> Guessers =>
+            _players.Where(p => p != CueMaster && p.IsConnected);
 
         public void StartMatch()
         {
@@ -134,7 +153,7 @@ namespace ColorGuesser.Core
 
             dict[playerId] = coord;
 
-            if (dict.Count >= _players.Count - 1) // all guessers are in
+            if (dict.Count >= Guessers.Count()) // every connected guesser is in
             {
                 if (Phase == MatchPhase.Guessing1) Phase = MatchPhase.CueMasterClue2;
                 else RevealAndScore();
@@ -173,6 +192,44 @@ namespace ColorGuesser.Core
             StateChanged?.Invoke();
             return true;
         }
+
+        /// <summary>
+        /// Marks a player as having dropped out. They keep their score and stay on the
+        /// scoreboard, but the round stops waiting for them: if it was their turn to give
+        /// a clue, or they were the last guess the phase needed, play moves on.
+        /// Returns false if the id is unknown or they had already dropped.
+        /// </summary>
+        public bool DropPlayer(string playerId)
+        {
+            var player = _players.FirstOrDefault(p => p.Id == playerId);
+            if (player == null || !player.IsConnected) return false;
+
+            bool wasCueMaster = CueMaster == player;
+            player.IsConnected = false;
+
+            switch (Phase)
+            {
+                // Their clue is never coming, so hand the round to the next cue master.
+                case MatchPhase.CueMasterClue1:
+                case MatchPhase.CueMasterClue2:
+                    if (wasCueMaster) ForceAdvancePhase();
+                    break;
+
+                // The round may now have every guess it is still waiting for.
+                case MatchPhase.Guessing1:
+                    if (wasCueMaster || _guess1.Count >= Guessers.Count()) ForceAdvancePhase();
+                    break;
+                case MatchPhase.Guessing2:
+                    if (wasCueMaster || _guess2.Count >= Guessers.Count()) ForceAdvancePhase();
+                    break;
+            }
+
+            StateChanged?.Invoke();
+            return true;
+        }
+
+        /// <summary>How many players are still in the match.</summary>
+        public int ConnectedCount => _players.Count(p => p.IsConnected);
 
         /// <summary>True while the round is in a phase the timer applies to.</summary>
         public static bool IsTimedPhase(MatchPhase phase) =>

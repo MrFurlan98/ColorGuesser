@@ -15,6 +15,13 @@ namespace ColorGuesser.Core
         /// Chosen in the menu; the host guarantees it is unique per match.</summary>
         public int ColorIndex { get; internal set; }
 
+        /// <summary>
+        /// False once the player has dropped out. They keep their score and stay on the
+        /// scoreboard, but the round no longer waits for them and they are skipped when
+        /// the cue master rotates.
+        /// </summary>
+        public bool IsConnected { get; internal set; } = true;
+
         public Player(string id, string name, int colorIndex = 0)
         {
             Id = id;

@@ -111,6 +111,91 @@ namespace ColorGuesser.Tests
             Assert.IsFalse(m.SubmitGuess(one.Id, m.Target));
         }
 
+        // ----- Players dropping out -------------------------------------------------
+
+        [Test]
+        public void ADroppedPlayerKeepsTheirScoreButIsNoLongerAGuesser()
+        {
+            var m = NewMatch();
+            m.StartMatch();
+            PlayPerfectRound(m);              // everyone scores
+            m.NextRound();
+
+            var victim = m.Guessers.First();
+            int scoreBefore = victim.Score;
+
+            Assert.IsTrue(m.DropPlayer(victim.Id));
+
+            Assert.AreEqual(scoreBefore, victim.Score, "a dropped player keeps their points");
+            Assert.Contains(victim, m.Players.ToList(), "and stays on the scoreboard");
+            Assert.IsFalse(m.Guessers.Contains(victim), "but the round no longer waits for them");
+            Assert.AreEqual(2, m.ConnectedCount);
+        }
+
+        [Test]
+        public void DroppingTheLastAwaitedGuesserAdvancesTheRound()
+        {
+            var m = NewMatch();
+            m.StartMatch();
+            m.SubmitClue(m.CueMaster.Id, "quente");
+
+            // One of the two guessers has answered; the round waits for the other.
+            var guessers = m.Guessers.ToList();
+            m.SubmitGuess(guessers[0].Id, m.Target);
+            Assert.AreEqual(MatchPhase.Guessing1, m.Phase);
+
+            m.DropPlayer(guessers[1].Id);
+
+            Assert.AreEqual(MatchPhase.CueMasterClue2, m.Phase,
+                "with nobody left to wait for, the round must not stall");
+        }
+
+        [Test]
+        public void DroppingTheCueMasterHandsTheRoundOn()
+        {
+            var m = NewMatch();
+            m.StartMatch();
+            var cue = m.CueMaster;
+            Assert.AreEqual(MatchPhase.CueMasterClue1, m.Phase);
+
+            m.DropPlayer(cue.Id);
+
+            Assert.AreNotEqual(cue.Id, m.CueMaster.Id, "the turn skips a player who left");
+            Assert.IsTrue(m.CueMaster.IsConnected);
+            Assert.AreNotEqual(MatchPhase.CueMasterClue1, m.Phase,
+                "their clue is never coming, so the phase moves on");
+        }
+
+        [Test]
+        public void TheCueMasterRotationSkipsPlayersWhoLeft()
+        {
+            var m = NewMatch(targetScore: 500); // high, so the match cannot end mid-loop
+            m.StartMatch();
+
+            var absent = m.Guessers.First();
+            m.DropPlayer(absent.Id);
+
+            // Play on: no round may ever hand the turn to the absent player.
+            for (int i = 0; i < 6; i++)
+            {
+                Assert.AreNotEqual(absent.Id, m.CueMaster.Id);
+                PlayPerfectRound(m);
+                if (m.Phase == MatchPhase.Reveal) m.NextRound();
+            }
+        }
+
+        [Test]
+        public void DroppingAnUnknownOrAlreadyGonePlayerDoesNothing()
+        {
+            var m = NewMatch();
+            m.StartMatch();
+            var victim = m.Guessers.First();
+
+            Assert.IsTrue(m.DropPlayer(victim.Id));
+            Assert.IsFalse(m.DropPlayer(victim.Id), "dropping twice is a no-op");
+            Assert.IsFalse(m.DropPlayer("nobody"));
+        }
+
         [Test]
         public void MatchFinishesOnceAPlayerReachesTheTargetScore()
         {

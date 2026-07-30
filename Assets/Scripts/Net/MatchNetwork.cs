@@ -385,7 +385,7 @@ namespace ColorGuesser.Net
                 NetworkManager.ConnectedClientsIds.Count > capacity)
             {
                 Debug.Log($"Room is full ({capacity}); disconnecting client {clientId}.");
-                NetworkManager.DisconnectClient(clientId);
+                NetworkManager.DisconnectClient(clientId, "A sala está cheia.");
                 return;
             }
 
@@ -407,9 +407,17 @@ namespace ColorGuesser.Net
 
             if (_serverMatch == null) return;
 
-            // A player left mid-match. MatchController can't drop a player, so we send
-            // everyone back to the lobby rather than stall on the missing player.
-            ReturnToLobby();
+            // A player left mid-match. Drop them from the round rather than ending the
+            // match: they keep their score on the board, and play carries on without
+            // waiting for them.
+            _serverMatch.DropPlayer(clientId.ToString());
+
+            // Below the minimum there is no game left to play, so back to the lobby.
+            if (_serverMatch.ConnectedCount < MinPlayersToStart)
+            {
+                Debug.Log("Too few players left to continue; returning to the lobby.");
+                ReturnToLobby();
+            }
         }
 
         [Rpc(SendTo.Server)]

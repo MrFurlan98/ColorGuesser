@@ -65,7 +65,12 @@ namespace ColorGuesser.Net
             // Menu is up until we connect (MatchNetwork spawns).
             bool showMenu = !match.IsSpawned;
             _hud.SetVisible(showMenu);
-            if (showMenu) _hud.SetInteractable(!session.IsBusy);
+            if (!showMenu) return;
+
+            _hud.SetInteractable(!session.IsBusy);
+            // Explains a room we did not leave on purpose: host closed it, connection
+            // lost, or the room was full.
+            _hud.SetNotice(session.Notice);
         }
     }
 }

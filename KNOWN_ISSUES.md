@@ -76,11 +76,32 @@ of the app, and the deploy link. Only the deploy exists. "Documentação da API"
 obvious counterpart in this project — consider reinterpreting it as the C4 diagrams plus
 the code documentation, and say so in the text.
 
-### 6. Disconnect handling is harsh; no reconnect **(doc)**
-One player dropping ends the match **for everyone** (back to lobby, scores lost).
-§3 lists *"queda de conexão"* and §8 lists *"reconexão"* as scenarios to handle.
-Also: if the **host** leaves, clients get no graceful "host left" screen — they are just
-disconnected.
+### 6. Disconnect handling **(doc)** — DONE except reconnect
+**Done (2026-07-29):**
+- A player dropping no longer ends the match. `MatchController.DropPlayer` marks them
+  absent: they keep their score and stay on the scoreboard, the round stops waiting for
+  their guess, and the cue-master rotation skips them. If their absence completes the
+  phase (or it was their turn to clue), play advances immediately instead of stalling.
+  Presence is synced to clients (`playerConnected`), and `SnapshotMatch.Guessers` filters
+  the same way as the host so the "x/y confirmed" counter agrees.
+- Below `MinPlayersToStart` the host still returns everyone to the lobby — there is no
+  game left to play.
+- Losing the connection now explains itself: `SessionBootstrap.Notice` is set from NGO's
+  `DisconnectReason` (or a generic "A conexão com a sala foi perdida.") and shown on the
+  menu, instead of the player silently finding themselves back at the start. A player
+  rejected for a full room is told "A sala está cheia."
+- Covered by 5 new tests in `MatchTests`.
+
+**Still open — reconnect (§8 "reconexão"):** rejoining an in-progress match and resuming
+your seat. This needs a **stable player identity** (Authentication `PlayerId` instead of
+the NGO `clientId`, which changes on every reconnect) plus host-side seat reservation.
+The identity change is also required by #1 (Cloud Save is keyed per player), so it is
+worth doing there first — after that, reconnect becomes a much smaller job.
+
+**Hard limit worth recording:** if the **host** leaves, the match cannot be recovered.
+Relay plus a host-authoritative design means the session dies with the host; host
+migration is a different architecture. Clients now get a clear message, which is the most
+that design allows.
 
 
 ---

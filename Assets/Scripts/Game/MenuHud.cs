@@ -29,6 +29,11 @@ namespace ColorGuesser.Game
         [SerializeField] private Button joinButton;
         [SerializeField] private TMP_InputField joinCodeInput;
 
+        [Header("Notice")]
+        [Tooltip("Optional. Explains why the player was dropped from a room (host closed " +
+                 "it, connection lost, room full). Hidden when there is nothing to say.")]
+        [SerializeField] private TextMeshProUGUI noticeText;
+
         public event Action HostClicked;
         public event Action JoinClicked;
         public event Action<string> NicknameChanged;
@@ -65,6 +70,16 @@ namespace ColorGuesser.Game
         public string JoinCode => joinCodeInput != null ? joinCodeInput.text : string.Empty;
 
         public void SetNickname(string nickname) { if (nicknameInput != null) nicknameInput.text = nickname; }
+
+        /// <summary>Shows why the player left a room, or hides the line when empty.</summary>
+        public void SetNotice(string message)
+        {
+            if (noticeText == null) return;
+
+            bool show = !string.IsNullOrWhiteSpace(message);
+            if (noticeText.gameObject.activeSelf != show) noticeText.gameObject.SetActive(show);
+            if (show) noticeText.text = message;
+        }
 
         /// <summary>Ticks the option for the given palette index (without re-firing events).</summary>
         public void SetSelectedColor(int index)
