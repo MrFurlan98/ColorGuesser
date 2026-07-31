@@ -35,6 +35,10 @@ namespace ColorGuesser.Game
         private bool _votedNextRound;            // this client already pressed next
         private bool _waitingForHost;            // non-host pressed play again on the end screen
 
+        // Which round/phase the clue field was last emptied for, so typing is not wiped.
+        private int _clueFieldRound = -1;
+        private MatchPhase _clueFieldPhase = MatchPhase.NotStarted;
+
         /// <summary>Raised when the player asks to go back to the main menu. The
         /// networking layer subscribes and leaves the session.</summary>
         public event System.Action LeaveRequested;
@@ -241,6 +245,8 @@ namespace ColorGuesser.Game
             _pendingGuess = null;
             _votedNextRound = false;
             _waitingForHost = false;
+            _clueFieldRound = -1;
+            _clueFieldPhase = MatchPhase.NotStarted;
 
             _hud.SetVisible(false);
             _hud.ShowGameplay(false);
@@ -292,7 +298,16 @@ namespace ColorGuesser.Game
 
             bool decided = m.Players.Any(p => p.Score >= m.TargetScore); // someone hit the target
             _hud.SetClueControlsEnabled(mayGiveClue);
-            if (mayGiveClue) _hud.ClueText = string.Empty;
+            // Empty the field when a NEW clue is being asked for - not on every redraw.
+            // Refresh runs on any state change, so clearing unconditionally wiped whatever
+            // the cue master had typed the moment anything else happened, and the clue then
+            // went out empty (which the rules reject) or never went at all.
+            if (mayGiveClue && (_clueFieldRound != m.RoundNumber || _clueFieldPhase != phase))
+            {
+                _clueFieldRound = m.RoundNumber;
+                _clueFieldPhase = phase;
+                _hud.ClueText = string.Empty;
+            }
             // Round number + the phase title/subtitle, written from this player's view.
             // In hotseat there is no single local player, so the screen belongs to the
             // cue master while clues are being given and to the guessers otherwise.

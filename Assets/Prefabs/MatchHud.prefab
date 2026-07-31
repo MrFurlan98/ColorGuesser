@@ -7272,7 +7272,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &8981172513538297033
 RectTransform:
   m_ObjectHideFlags: 0
@@ -13984,6 +13984,8 @@ MonoBehaviour:
   menuButton: {fileID: 6431942328633848015}
   summaryFormat: "{0} rodadas \u2022 {1} jogadores"
   emptyLabel: --
+  playAgainLabel: 
+  waitingForHostLabel: ESPERANDO HOST
 --- !u!1 &8390858210578713722
 GameObject:
   m_ObjectHideFlags: 0
