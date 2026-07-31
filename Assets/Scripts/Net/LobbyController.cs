@@ -76,8 +76,9 @@ namespace ColorGuesser.Net
 
         private void OnCopyCode()
         {
-            if (!string.IsNullOrEmpty(session.JoinCode))
-                GUIUtility.systemCopyBuffer = session.JoinCode;
+            // Not GUIUtility.systemCopyBuffer: that does nothing in a WebGL build, so the
+            // button appeared to work in the editor and quietly failed in the browser.
+            Clipboard.Copy(session.JoinCode);
         }
 
         // ----- Redraw ---------------------------------------------------------------
