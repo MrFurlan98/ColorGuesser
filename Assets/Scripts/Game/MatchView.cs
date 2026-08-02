@@ -312,8 +312,13 @@ namespace ColorGuesser.Game
             // In hotseat there is no single local player, so the screen belongs to the
             // cue master while clues are being given and to the guessers otherwise.
             bool cueMasterView = me == null ? cluePhase : amCue;
+            // Only the clue for the half of the round being played. The second clue replaces
+            // the first, so the display resets when the round moves on and nobody reads the
+            // board against a word that belonged to guesses already locked in.
+            bool secondHalf = phase == MatchPhase.CueMasterClue2 || phase == MatchPhase.Guessing2;
+            string currentClue = secondHalf ? m.Clue2 : m.Clue1;
             // Clues belong to the current round, so they hide once the match is over.
-            _hud.SetClue(m.Clue1, m.Clue2, visible: phase != MatchPhase.Finished);
+            _hud.SetClue(currentClue, visible: phase != MatchPhase.Finished);
 
             _hud.SetRound(m.RoundNumber, phase == MatchPhase.Finished);
             _hud.SetPhaseTexts(phase, cueMasterView);

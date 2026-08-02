@@ -187,9 +187,10 @@ namespace ColorGuesser.Game
             if (titles != null) titles.SetPhaseTexts(phase, isCueMaster);
         }
 
-        public void SetClue(string clue1, string clue2, bool visible = true)
+        /// <summary>Shows the clue for the half of the round being played.</summary>
+        public void SetClue(string currentClue, bool visible = true)
         {
-            if (clue != null) clue.SetClue(clue1, clue2, visible);
+            if (clue != null) clue.SetClue(currentClue, visible);
         }
 
         public void SetPhaseSteps(MatchPhase phase)

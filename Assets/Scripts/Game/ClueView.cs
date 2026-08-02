@@ -17,16 +17,19 @@ namespace ColorGuesser.Game
         [Tooltip("Container to hide outside a round. Empty = only the text is hidden.")]
         [SerializeField] private GameObject root;
 
-        /// <summary>Shows the clues, e.g. “QUENTE” “FOGO”. visible = false outside a round.</summary>
-        public void SetClue(string clue1, string clue2, bool visible)
+        /// <summary>
+        /// Shows the clue for the half of the round being played, e.g. “QUENTE”, or the
+        /// placeholder while the cue master has not given it yet. The second clue replaces
+        /// the first rather than joining it, so the board is never read against a word that
+        /// belongs to guesses already locked in. visible = false outside a round.
+        /// </summary>
+        public void SetClue(string clue, bool visible)
         {
             var target = root != null ? root : (clueText != null ? clueText.gameObject : null);
             if (target != null && target.activeSelf != visible) target.SetActive(visible);
             if (!visible || clueText == null) return;
 
-            string text = string.IsNullOrWhiteSpace(clue1) ? placeholder : Quote(clue1);
-            if (!string.IsNullOrWhiteSpace(clue2)) text += "   " + Quote(clue2);
-            clueText.text = text;
+            clueText.text = string.IsNullOrWhiteSpace(clue) ? placeholder : Quote(clue);
         }
 
         private static string Quote(string word) => $"“{word.Trim().ToUpperInvariant()}”";

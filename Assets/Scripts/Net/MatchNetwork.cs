@@ -150,13 +150,21 @@ namespace ColorGuesser.Net
         /// <summary>The room settings everyone currently sees (host-chosen).</summary>
         public LobbySettings Settings => _lobby?.settings ?? _settings ?? defaultSettings;
 
+        /// <summary>
+        /// The largest room the host may choose. Capped by what the Relay session was
+        /// actually created with: offering more seats than the session holds means the
+        /// lobby promises places that do not exist, and the extra players are turned away
+        /// by the service before this class ever sees them.
+        /// </summary>
+        private int MaxRoomSize => session != null ? Mathf.Max(3, session.MaxPlayers) : 10;
+
         /// <summary>Host only: change the room settings and sync them to everyone.</summary>
         public void SetSettings(int maxPlayers, int targetScore, int guessSeconds)
         {
             if (!IsServer) return;
             _settings = new LobbySettings
             {
-                maxPlayers = Mathf.Clamp(maxPlayers, 3, 10),
+                maxPlayers = Mathf.Clamp(maxPlayers, 3, MaxRoomSize),
                 targetScore = Mathf.Max(1, targetScore),
                 guessSeconds = Mathf.Max(0, guessSeconds),
             };
@@ -624,6 +632,11 @@ namespace ColorGuesser.Net
         {
             if (!IsServer) return;
 
+            // Clamped here too, not only in SetSettings: the fallback settings are edited
+            // in the inspector and have no idea what the session was created with.
+            var effective = (_settings ?? defaultSettings).Clone();
+            effective.maxPlayers = Mathf.Clamp(effective.maxPlayers, 3, MaxRoomSize);
+
             var ids = NetworkManager.ConnectedClientsIds.ToArray();
             _lobby = new LobbyRoster
             {
@@ -634,7 +647,7 @@ namespace ColorGuesser.Net
                 ready = ids.Select(id => id == NetworkManager.LocalClientId ||
                                          (_ready.TryGetValue(id, out var r) && r)).ToArray(),
                 hostId = (long)NetworkManager.LocalClientId,
-                settings = (_settings ?? defaultSettings).Clone(),
+                settings = effective,
             };
             LobbyChanged?.Invoke();       // host UI
             LobbyRpc(_lobby.ToBytes());   // clients
